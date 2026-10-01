@@ -1,38 +1,99 @@
 {
   "slug": "boulder-bear",
   "title": "Boulder Bear",
-  "shortDescription": "Help a brave teddy dodge, jump and ride boulders rolling down a mountain.",
-  "description": "Boulders are rolling down three mountain trails toward a brave teddy bear. Change trails to dodge them, jump over single boulders, or land on top of a four-boulder train and ride it. The boulders speed up the longer you survive.",
-  "genres": ["Arcade", "Runner"],
-  "tags": ["teddy bear", "boulders", "endless runner", "3d", "mobile"],
+  "shortDescription": "Help a brave teddy dodge, jump, duck and ride everything rolling down a mountain.",
+  "description": "Boulders, logs, wooden gates and giant boulders come rolling down three mountain trails toward a brave teddy bear. Change trails to dodge, jump boulders and logs, duck under gates, land on boulder trains and ride them, and climb from trains onto giants that block two or even all three trails. The pace climbs the longer you survive.",
+  "genres": [
+    "Arcade",
+    "Runner"
+  ],
+  "tags": [
+    "teddy bear",
+    "boulders",
+    "endless runner",
+    "3d",
+    "mobile"
+  ],
   "howToPlay": [
-    "Change trails to get out of a boulder's way.",
-    "Jump over single boulders.",
-    "Land on top of a four-boulder train and ride it; only its front can knock you over.",
-    "Survive as long as you can. Every boulder that rolls past is worth 10 points."
+    "Change trails to get out of the way.",
+    "Jump over single boulders and rolling logs.",
+    "Duck to slip under wooden gates.",
+    "Land on top of a boulder train and ride it; only its front can knock you over.",
+    "Giant boulders need two jumps: land on a normal boulder train first, then jump again.",
+    "Survive as long as you can. Every boulder that rolls past earns bonus points."
   ],
   "controls": {
     "keyboard": [
-      { "action": "Change trail", "keys": ["ArrowLeft", "ArrowRight", "A", "D"] },
-      { "action": "Jump", "keys": ["ArrowUp", "W", "Space"] },
-      { "action": "Drop", "keys": ["ArrowDown", "S"] },
-      { "action": "Pause", "keys": ["P", "Escape"] },
-      { "action": "Mute", "keys": ["M"] }
+      {
+        "action": "Change trail",
+        "keys": [
+          "ArrowLeft",
+          "ArrowRight",
+          "A",
+          "D"
+        ]
+      },
+      {
+        "action": "Jump",
+        "keys": [
+          "ArrowUp",
+          "W",
+          "Space"
+        ]
+      },
+      {
+        "action": "Duck, or drop fast mid-air",
+        "keys": [
+          "ArrowDown",
+          "S"
+        ]
+      },
+      {
+        "action": "Pause",
+        "keys": [
+          "P",
+          "Escape"
+        ]
+      },
+      {
+        "action": "Mute",
+        "keys": [
+          "M"
+        ]
+      }
     ],
     "touch": [
-      { "action": "Change trail", "gesture": "Swipe left or right" },
-      { "action": "Jump", "gesture": "Swipe up" },
-      { "action": "Drop", "gesture": "Swipe down" }
+      {
+        "action": "Change trail",
+        "gesture": "Swipe left or right"
+      },
+      {
+        "action": "Jump",
+        "gesture": "Swipe up"
+      },
+      {
+        "action": "Duck, or drop fast mid-air",
+        "gesture": "Swipe down"
+      }
     ]
   },
   "orientation": "any",
-  "platforms": ["desktop", "mobile"],
+  "platforms": [
+    "desktop",
+    "mobile"
+  ],
   "entry": "index.html",
   "thumbnail": "thumbnail.jpg",
   "engine": "three.js",
-  "author": { "name": "Yayzu", "url": "https://yayzu.com" },
-  "version": "1.0.0",
+  "author": {
+    "name": "Yayzu",
+    "url": "https://yayzu.com"
+  },
+  "version": "1.1.0",
   "released": "2026-10-01",
-  "sizeKB": { "total": 628, "initialGzip": 150 },
+  "sizeKB": {
+    "total": 636,
+    "initialGzip": 148
+  },
   "contentRating": "everyone"
 }
