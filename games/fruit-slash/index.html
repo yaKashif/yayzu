@@ -126,6 +126,28 @@
         15% { opacity: 1; transform: translate(-50%, -50%) scale(1.1); }
         100% { opacity: 0; transform: translate(-50%, -120%) scale(1); }
       }
+      /* "Stage 2", "Fruit frenzy!" and other announcements, big in the middle of the board. */
+      .banner {
+        position: fixed;
+        z-index: 2;
+        left: 50%;
+        top: 38%;
+        transform: translate(-50%, -50%);
+        color: #fff;
+        font-weight: 900;
+        font-size: clamp(32px, 10vw, 56px);
+        text-shadow: 0 4px 0 #b5481a, 0 8px 22px rgba(0, 0, 0, 0.45);
+        pointer-events: none;
+        white-space: nowrap;
+        animation: banner 1.6s ease-out forwards;
+      }
+      @keyframes banner {
+        0% { opacity: 0; transform: translate(-50%, -50%) scale(0.5); }
+        15% { opacity: 1; transform: translate(-50%, -50%) scale(1.12); }
+        25% { transform: translate(-50%, -50%) scale(1); }
+        80% { opacity: 1; transform: translate(-50%, -55%) scale(1); }
+        100% { opacity: 0; transform: translate(-50%, -75%) scale(1); }
+      }
       #overlay {
         position: fixed;
         z-index: 4;

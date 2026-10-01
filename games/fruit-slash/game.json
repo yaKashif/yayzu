@@ -2,7 +2,7 @@
   "slug": "fruit-slash",
   "title": "Fruit Slash",
   "shortDescription": "Swipe to slice flying fruit, chain combos, and never hit a bomb.",
-  "description": "Watermelons, oranges, apples, lemons, kiwis and plums come flying up from below. Swipe across them to slice them in half, cut three or more in one swipe for a combo bonus, and stay away from the bombs. Let three fruit fall and the game is over. The fruit comes faster, and the bombs more often, the longer you last.",
+  "description": "Watermelons, oranges, apples, lemons, kiwis and plums come flying up from below. Swipe across them to slice them in half, cut three or more in one swipe for a combo bonus, and stay away from the bombs. The game plays in stages of bunches, lines and crossfire, each ending in a fruit frenzy or a bomb-filled fruit storm, and each stage is faster than the last.",
   "genres": [
     "Arcade",
     "Casual"
@@ -18,7 +18,8 @@
     "Swipe across flying fruit to slice it.",
     "Slice three or more fruit in one swipe for a combo bonus.",
     "Never cut a bomb: it ends the game on the spot.",
-    "Every fruit that falls uncut costs one of your three lives."
+    "Every fruit that falls uncut costs one of your three lives.",
+    "Each stage ends in a finale: a fruit frenzy with no bombs, or a fruit storm with bombs among the fruit. Dropped fruit costs no life during a finale."
   ],
   "controls": {
     "keyboard": [
@@ -61,10 +62,10 @@
     "name": "Yayzu",
     "url": "https://yayzu.com"
   },
-  "version": "1.0.0",
+  "version": "1.1.0",
   "released": "2026-10-01",
   "sizeKB": {
-    "total": 608,
+    "total": 618,
     "initialGzip": 146
   },
   "contentRating": "everyone"

@@ -17,6 +17,7 @@
   "howToPlay": [
     "Change trails to get out of the way.",
     "Jump over single boulders and rolling logs.",
+    "Press jump just before landing to jump again the moment you touch down.",
     "Duck to slip under wooden gates.",
     "Land on top of a boulder train and ride it; only its front can knock you over.",
     "Giant boulders need two jumps: land on a normal boulder train first, then jump again.",
@@ -89,10 +90,10 @@
     "name": "Yayzu",
     "url": "https://yayzu.com"
   },
-  "version": "1.1.0",
+  "version": "1.2.0",
   "released": "2026-10-01",
   "sizeKB": {
-    "total": 636,
+    "total": 677,
     "initialGzip": 148
   },
   "contentRating": "everyone"
