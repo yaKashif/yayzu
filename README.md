@@ -1,138 +1,131 @@
 # Yayzu
 
-Free browser games you can play instantly, at [yayzu.com](https://yayzu.com).
+**Tiny games. Big yay.**
 
-A static site served by GitHub Pages: plain HTML and CSS, no build step for the site itself.
+[![Yayzu: free games you can play instantly](assets/og-image.jpg)](https://yayzu.com)
 
-Styles live in `assets/site.css` and are copied into each page's `<style id="site-css">` block so
-pages paint without waiting for a stylesheet. After editing the CSS, run `node tools/inline-css.mjs`
-and commit the updated pages.
+[Yayzu](https://yayzu.com) is a home for small, fun browser games. Tap a game and you're playing:
+no downloads, no installs, no sign-up. Every game works on phones, tablets and computers, and every
+game is free.
 
-- `index.html` is the home page and game grid.
-- `<slug>/index.html` is each game's page: the game embedded at the top, then its guide.
-- `games/<slug>/` holds each playable game: its build, `game.json` metadata and thumbnail.
+## Play now
 
-## Games
-
-| Game | Page | Source |
+| | Game | |
 | --- | --- | --- |
-| Boulder Bear | [/boulder-bear/](https://yayzu.com/boulder-bear/) | Built from the `boulder-bear` project with `npm run publish:yayzu`, which bundles the game and three.js into `games/boulder-bear/`. |
-| Fruit Slash | [/fruit-slash/](https://yayzu.com/fruit-slash/) | Built from the `fruit-slash` project with `npm run publish:yayzu`, which bundles the game and three.js into `games/fruit-slash/`. |
+| [<img src="games/boulder-bear/thumbnail.jpg" alt="Boulder Bear" width="240">](https://yayzu.com/boulder-bear/) | **[Boulder Bear](https://yayzu.com/boulder-bear/)** | Help a brave teddy dodge, jump, duck and ride everything rolling down a mountain. |
+| [<img src="games/fruit-slash/thumbnail.jpg" alt="Fruit Slash" width="240">](https://yayzu.com/fruit-slash/) | **[Fruit Slash](https://yayzu.com/fruit-slash/)** | Swipe to slice flying fruit, chain combos, and never hit a bomb. |
 
-## Publishing a game page
+More games are on the way.
 
-When a game is accepted, these all need updating so search engines find it and every page links to
-it:
+## What Yayzu is about
 
-1. **Game page**: copy an existing `<slug>/index.html`. Update the title (`<Game>: Play Free
-   Online on Yayzu`), the description (under 160 characters), the canonical and `og:` URLs, the
-   image size and alt text, the `VideoGame` and `BreadcrumbList` structured data, the iframe and
-   its poster, and the copy.
-2. **WebP thumbnail**: add `games/<slug>/thumbnail.webp` next to the JPEG. Pages use it through
-   `<picture>` and keep the JPEG as the fallback and for link previews.
-3. **Home page**: add a tile to the grid, a paragraph under "Games to start with", and an entry
-   in the `ItemList` structured data.
-4. **Links between pages**: add the game to the footer of every page, to `404.html`, and to the
-   "More games" tiles on the other game pages.
-5. **Sitemap**: add the page to `sitemap.xml` with its thumbnail, and update `lastmod` on any page
-   you changed.
+- **Instant.** Games open in a second or two, right in the browser. Nothing to install, no
+  account, no waiting.
+- **Everywhere.** Swipe on a phone held upright, or use the keyboard and mouse on a computer.
+- **Light.** Games are small enough to load quickly on mobile data and run smoothly on everyday
+  phones.
+- **Free.** Every game on Yayzu is free to play.
+- **Made by indie developers.** Games come from small studios and solo makers, and anyone can
+  submit one.
 
-The game's own `games/<slug>/index.html` must have a canonical link pointing to its game page, so
-search engines index the page with the guide rather than the bare game.
+## Contribute
+
+There are a few ways to help make Yayzu better:
+
+- **Submit your game.** Made a web game? We'd love to host it. See [Submit your game](#submit-your-game).
+- **Report a bug.** If a game breaks, won't load or plays badly on your device,
+  [open an issue](https://github.com/yaKashif/yayzu/issues/new) and tell us which game, which
+  device and what happened.
+- **Suggest a game or idea.** Tell us what you'd like to play next, or what would make the site
+  better, in an [issue](https://github.com/yaKashif/yayzu/issues/new).
+- **Fix a game page.** Spotted a typo or a confusing tip? Each game's page is in its own folder,
+  like `fruit-slash/`. Send a pull request with the fix.
 
 ## Submit your game
 
-Made a web game? We'd love to put it on Yayzu. Games are submitted as pull requests to this
-repository.
+Games are submitted as pull requests to this repository.
 
 1. **Fork** this repository.
 2. **Add your game** in a new folder, `games/<slug>/`, where `<slug>` is a short lowercase name
-   with hyphens, like `boulder-bear`. The folder needs:
-   - your game's built files, with `index.html` as the entry point,
-   - a `game.json` metadata file ([format below](#metadata-gamejson)),
-   - a `thumbnail.jpg` or `thumbnail.webp`.
-3. **Test it** by serving the repository folder with any static server, for example
+   with hyphens, like `fruit-slash`. The folder needs:
+   - your game's files, with `index.html` as the starting page,
+   - a `game.json` file describing your game ([format below](#describing-your-game-gamejson)),
+   - a thumbnail, `thumbnail.jpg` or `thumbnail.webp`.
+3. **Try it** by serving the repository folder with any static server, for example
    `npx serve .`, then opening `/games/<slug>/`. Try it on a phone too.
 4. **Open a pull request** titled `Add game: <Title>`. The template walks you through the
    checklist below.
 
-We review every submission and play it on a computer and a phone. If it meets the guidelines, we
-write its game page, add it to the home page and merge. If something needs changing, we'll say
-what in the pull request.
+We play every submission on a computer and a phone. If it meets the guidelines, we write its game
+page, add it to the home page and publish it. If something needs changing, we'll say what in the
+pull request.
 
 Not comfortable with pull requests? [Open an issue](https://github.com/yaKashif/yayzu/issues/new)
 with a link to your game and we'll take it from there.
 
 ## Guidelines
 
-### 1. Optimized
+### Fast and light
 
-Yayzu players are often on phones and mobile data, so games must load fast and run smoothly.
+Many Yayzu players are on phones and mobile data, so games need to load fast and run smoothly.
 
-- **Small downloads.** Keep what loads before the first screen under **3 MB compressed**, and the
-  whole game under **15 MB**. Load large extras (more levels, music) after play starts.
-- **Minified and compressed.** Minify JavaScript and CSS. Use compressed images (WebP or
-  optimized JPG/PNG) and compressed audio (OGG, MP3 or M4A).
-- **Fast to start.** A player should be able to start playing within about **3 seconds** on a
-  mid-range phone on 4G.
-- **Smooth to play.** Aim for **60 fps** on a mid-range phone; it must never drop below 30 fps
-  in normal play.
-- **Good citizen.** Pause the game and its sound when the tab is hidden. No errors in the
+- **Small.** What loads before the first screen should be under **3 MB compressed**, and the whole
+  game under **15 MB**. Load extras like more levels or music after play starts.
+- **Quick to start.** A player should be playing within about **3 seconds** on a mid-range phone.
+- **Smooth.** Aim for **60 fps** on a mid-range phone, and never below 30 fps in normal play.
+- **Polite.** Pause the game and its sound when the tab is hidden, and leave no errors in the
   browser console.
 
-### 2. Web-only
+### Plays in the browser
 
-Games run entirely in the browser, from static files, inside the Yayzu game page.
+Games run entirely in the browser, embedded on their Yayzu page.
 
-- **Static files only:** HTML, JavaScript, CSS, WebAssembly, images, audio and fonts. No
-  installs, plugins, browser extensions or downloads, and no server-side code.
-- **Self-contained.** Bundle your libraries and assets into your folder. A game must not need a
-  network connection to anything else to be played. Online extras like leaderboards must be
-  optional.
-- **Relative paths.** Your game is served from `/games/<slug>/`, so reference every file
-  relatively (`./sprites/hero.png`, not `/sprites/hero.png`).
-- **Works in a frame.** Games are embedded in an `<iframe>` on their page. Don't redirect the
-  top page, and open any links with `target="_top"`.
-- **Desktop and mobile.** Support keyboard or mouse on computers and touch on phones, and work
-  in current Chrome, Safari, Firefox and Edge.
-- **Sound after a tap.** Browsers block audio until the player interacts, so start sound on the
-  first tap, click or key press, and offer a mute control.
-- **No ads, tracking or data collection.** Yayzu handles ads and analytics site-wide. Saving
-  progress or high scores in `localStorage` is fine.
+- **Just files.** HTML, JavaScript, CSS, WebAssembly, images, audio and fonts. No installs,
+  plugins, downloads or server code.
+- **Self-contained.** Include your libraries and assets in your folder. The game must be playable
+  without connecting to anything else; online extras like leaderboards must be optional.
+- **Relative paths.** Reference files as `./sprites/hero.png`, not `/sprites/hero.png`.
+- **Works in a frame.** Don't redirect the page around the game, and open links with
+  `target="_top"`.
+- **Computer and phone.** Support keyboard or mouse and touch, in current Chrome, Safari, Firefox
+  and Edge.
+- **Sound after a tap.** Start sound on the first tap, click or key press, and offer a mute
+  button.
+- **No ads, tracking or data collection** in your game. Saving progress or high scores in the
+  browser is fine.
 
-### 3. Metadata
+### Tells players what it is
 
-Every game includes a `game.json` file and a thumbnail. We use them to build the game page, the
-home page tile and the information search engines show.
+Every game comes with a `game.json` file and a thumbnail. We use them for the game's page, its
+tile on the home page and what search engines show.
 
-- **Thumbnail:** 16:9, at least **800×450** (1200×675 recommended), under **200 KB**. Keep the
-  main subject near the centre, because the home page crops tiles to a square. Avoid text in the
-  image.
-- **`game.json`:** the fields below. Required fields are marked.
+- **Thumbnail:** 16:9, at least **800×450** (1200×675 is ideal), under **200 KB**. Keep the main
+  subject near the centre, since home page tiles are cropped square. Avoid text in the image.
+- **`game.json`:** see the format below.
 
-### 4. Content
+### Right for everyone
 
-- **Original or properly licensed.** Everything in your game must be yours or licensed for
-  commercial use. No characters, music or art from other games, films or brands.
-- **Family friendly.** Games must be suitable for all ages: no graphic violence, sexual content
-  or hateful material.
-- **Made with AI? Welcome**, as long as the game is polished, original and playable, not raw
-  generated output.
+- **Yours to share.** Everything in your game must be yours or licensed for commercial use: no
+  characters, music or art from other games, films or brands.
+- **Family friendly.** Suitable for all ages, with no graphic violence, sexual content or hateful
+  material.
+- **Made with AI? Welcome**, as long as the game is polished, original and fun, not raw generated
+  output.
 
-## Metadata: `game.json`
+## Describing your game: `game.json`
 
 ```json
 {
-  "slug": "boulder-bear",
-  "title": "Boulder Bear",
-  "shortDescription": "Help a brave teddy dodge, jump and ride boulders rolling down a mountain.",
-  "description": "Boulders are rolling down three mountain trails toward a brave teddy bear...",
-  "genres": ["Arcade", "Runner"],
-  "tags": ["teddy bear", "endless runner", "3d"],
-  "howToPlay": ["Change trails to get out of a boulder's way.", "Jump over single boulders."],
+  "slug": "fruit-slash",
+  "title": "Fruit Slash",
+  "shortDescription": "Swipe to slice flying fruit, chain combos, and never hit a bomb.",
+  "description": "Watermelons, oranges, apples and more come flying up from below...",
+  "genres": ["Arcade", "Casual"],
+  "tags": ["fruit", "slicing", "swipe"],
+  "howToPlay": ["Swipe across flying fruit to slice it.", "Never cut a bomb."],
   "controls": {
-    "keyboard": [{ "action": "Jump", "keys": ["ArrowUp", "W", "Space"] }],
-    "touch": [{ "action": "Jump", "gesture": "Swipe up" }]
+    "keyboard": [{ "action": "Slice", "keys": ["Mouse: hold the button and swipe"] }],
+    "touch": [{ "action": "Slice", "gesture": "Swipe across the fruit" }]
   },
   "orientation": "any",
   "platforms": ["desktop", "mobile"],
@@ -142,43 +135,43 @@ home page tile and the information search engines show.
   "author": { "name": "Your name or studio", "url": "https://example.com" },
   "version": "1.0.0",
   "released": "2026-10-01",
-  "sizeKB": { "total": 628, "initialGzip": 150 },
+  "sizeKB": { "total": 608, "initialGzip": 146 },
   "contentRating": "everyone"
 }
 ```
 
-| Field | Required | Description |
+| Field | Required | What to put |
 | --- | --- | --- |
-| `slug` | Yes | Matches the folder name. Lowercase letters, numbers and hyphens. |
+| `slug` | Yes | The folder name. Lowercase letters, numbers and hyphens. |
 | `title` | Yes | The game's name, as players should see it. |
-| `shortDescription` | Yes | One sentence, up to 160 characters. Used in search results and link previews. |
+| `shortDescription` | Yes | One sentence, up to 160 characters. Shown in search results and link previews. |
 | `description` | Yes | A paragraph about the game for its page. |
-| `genres` | Yes | One to three, such as Arcade, Puzzle, Racing, Runner, Shooter, Sports, Strategy. |
-| `tags` | No | Extra keywords people might search for. |
+| `genres` | Yes | One to three, such as Arcade, Puzzle, Racing, Runner, Shooter, Sports or Strategy. |
+| `tags` | No | Other words people might search for. |
 | `howToPlay` | Yes | A few short steps explaining how to play. |
-| `controls` | Yes | Keyboard and touch controls. Include `touch` if the game supports phones. |
-| `orientation` | Yes | `any`, `portrait` or `landscape`: how the game should be held on a phone. |
+| `controls` | Yes | Keyboard and touch controls. Include `touch` if the game works on phones. |
+| `orientation` | Yes | `any`, `portrait` or `landscape`: how to hold a phone to play. |
 | `platforms` | Yes | `desktop`, `mobile`, or both. |
-| `entry` | Yes | The file that starts the game, normally `index.html`. |
-| `thumbnail` | Yes | The thumbnail file name in your folder. |
-| `engine` | No | What the game is built with, such as three.js, Phaser, PixiJS or Godot (web export). |
-| `author` | Yes | Your name or studio, and optionally a link. |
-| `version` | Yes | Bump it whenever you send an update. |
+| `entry` | Yes | The page that starts the game, normally `index.html`. |
+| `thumbnail` | Yes | The thumbnail's file name. |
+| `engine` | No | What you built it with, such as three.js, Phaser, PixiJS or Godot. |
+| `author` | Yes | Your name or studio, and a link if you like. |
+| `version` | Yes | Raise it whenever you send an update. |
 | `released` | Yes | First release date, as `YYYY-MM-DD`. |
 | `sizeKB` | Yes | `total`: the whole folder. `initialGzip`: what loads before the first screen, compressed. |
 | `contentRating` | Yes | `everyone`. Games for older audiences aren't accepted yet. |
 
 ## Submission checklist
 
-- [ ] The game is in `games/<slug>/` with `index.html` as its entry point.
+- [ ] The game is in `games/<slug>/` with `index.html` as its starting page.
 - [ ] `game.json` is complete and its `slug` matches the folder name.
 - [ ] The thumbnail is 16:9, at least 800×450 and under 200 KB.
-- [ ] Initial load is under 3 MB compressed, and the whole game under 15 MB.
+- [ ] It loads under 3 MB before the first screen, and the whole game is under 15 MB.
 - [ ] It starts within about 3 seconds and runs smoothly on a mid-range phone.
 - [ ] It works with keyboard or mouse on a computer and with touch on a phone.
-- [ ] All paths are relative, and it works inside an iframe.
-- [ ] It makes no required network requests outside its own folder.
+- [ ] All paths are relative, and it works inside a frame.
+- [ ] It doesn't need to connect to anything outside its own folder.
 - [ ] No ads, tracking or data collection.
-- [ ] Sound starts after the first interaction and can be muted.
+- [ ] Sound starts after the first tap or key press, and can be muted.
 - [ ] It pauses when the tab is hidden, and the console shows no errors.
-- [ ] All assets are original or licensed for commercial use, and the game suits all ages.
+- [ ] Everything in it is yours or licensed for commercial use, and it suits all ages.
