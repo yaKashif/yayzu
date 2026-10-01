@@ -214,6 +214,32 @@ a.tile:focus-visible {
   aspect-ratio: auto;
 }
 
+/* "Full screen" on iPhone and iPad: the player fills the browser window (see assets/player.js). */
+.player-max,
+.player-max body {
+  overflow: hidden;
+  overscroll-behavior: none;
+}
+
+.player-max .player {
+  position: fixed;
+  inset: 0;
+  z-index: 10;
+  display: flex;
+  flex-direction: column;
+  border-radius: 0;
+}
+
+.player-max .stage {
+  flex: 1;
+  height: auto;
+  aspect-ratio: auto;
+}
+
+.player-max .player-bar {
+  padding-bottom: max(10px, env(safe-area-inset-bottom));
+}
+
 .player-bar {
   display: flex;
   align-items: center;

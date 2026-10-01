@@ -25,12 +25,26 @@ start.addEventListener("click", (e) => {
   loadGame();
 });
 
-// Full screen where the browser supports it (iPhone Safari doesn't for embedded games), and
-// otherwise open the game on its own page.
-document.getElementById("fullscreen").addEventListener("click", () => {
+// On iPhone and iPad, real full screen is no good for games: Safari closes it on any downward
+// swipe, by design, and pages can't stop that. iPhone Safari doesn't offer it for embedded games
+// at all. There, "full screen" makes the player fill the browser window instead. (iPads report
+// themselves as Macs, but Macs don't have touch screens.)
+const appleTouch =
+  /iPad|iPhone|iPod/.test(navigator.userAgent) || (/Macintosh/.test(navigator.userAgent) && navigator.maxTouchPoints > 1);
+const fullscreenButton = document.getElementById("fullscreen");
+
+function fillWindow(on) {
+  document.documentElement.classList.toggle("player-max", on);
+  fullscreenButton.textContent = on ? "Exit full screen" : "Full screen";
+  if (on) scrollTo(0, 0);
+}
+
+fullscreenButton.addEventListener("click", () => {
   const request = player.requestFullscreen || player.webkitRequestFullscreen;
-  if (!request) {
-    location.href = game;
+  if (appleTouch || !request) {
+    const on = !document.documentElement.classList.contains("player-max");
+    if (on) loadGame();
+    fillWindow(on);
     return;
   }
   loadGame();
