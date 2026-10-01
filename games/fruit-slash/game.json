@@ -1,0 +1,71 @@
+{
+  "slug": "fruit-slash",
+  "title": "Fruit Slash",
+  "shortDescription": "Swipe to slice flying fruit, chain combos, and never hit a bomb.",
+  "description": "Watermelons, oranges, apples, lemons, kiwis and plums come flying up from below. Swipe across them to slice them in half, cut three or more in one swipe for a combo bonus, and stay away from the bombs. Let three fruit fall and the game is over. The fruit comes faster, and the bombs more often, the longer you last.",
+  "genres": [
+    "Arcade",
+    "Casual"
+  ],
+  "tags": [
+    "fruit",
+    "slicing",
+    "swipe",
+    "3d",
+    "mobile"
+  ],
+  "howToPlay": [
+    "Swipe across flying fruit to slice it.",
+    "Slice three or more fruit in one swipe for a combo bonus.",
+    "Never cut a bomb: it ends the game on the spot.",
+    "Every fruit that falls uncut costs one of your three lives."
+  ],
+  "controls": {
+    "keyboard": [
+      {
+        "action": "Slice",
+        "keys": [
+          "Mouse: hold the button and swipe"
+        ]
+      },
+      {
+        "action": "Pause",
+        "keys": [
+          "P",
+          "Escape"
+        ]
+      },
+      {
+        "action": "Mute",
+        "keys": [
+          "M"
+        ]
+      }
+    ],
+    "touch": [
+      {
+        "action": "Slice",
+        "gesture": "Swipe across the fruit"
+      }
+    ]
+  },
+  "orientation": "any",
+  "platforms": [
+    "desktop",
+    "mobile"
+  ],
+  "entry": "index.html",
+  "thumbnail": "thumbnail.jpg",
+  "engine": "three.js",
+  "author": {
+    "name": "Yayzu",
+    "url": "https://yayzu.com"
+  },
+  "version": "1.0.0",
+  "released": "2026-10-01",
+  "sizeKB": {
+    "total": 608,
+    "initialGzip": 146
+  },
+  "contentRating": "everyone"
+}

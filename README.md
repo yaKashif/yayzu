@@ -13,6 +13,7 @@ A static site served by GitHub Pages: plain HTML and CSS, no build step for the 
 | Game | Page | Source |
 | --- | --- | --- |
 | Boulder Bear | [/boulder-bear/](https://yayzu.com/boulder-bear/) | Built from the `boulder-bear` project with `npm run publish:yayzu`, which bundles the game and three.js into `games/boulder-bear/`. |
+| Fruit Slash | [/fruit-slash/](https://yayzu.com/fruit-slash/) | Built from the `fruit-slash` project with `npm run publish:yayzu`, which bundles the game and three.js into `games/fruit-slash/`. |
 
 ## Submit your game
 
