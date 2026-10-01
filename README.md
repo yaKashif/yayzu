@@ -4,6 +4,10 @@ Free browser games you can play instantly, at [yayzu.com](https://yayzu.com).
 
 A static site served by GitHub Pages: plain HTML and CSS, no build step for the site itself.
 
+Styles live in `assets/site.css` and are copied into each page's `<style id="site-css">` block so
+pages paint without waiting for a stylesheet. After editing the CSS, run `node tools/inline-css.mjs`
+and commit the updated pages.
+
 - `index.html` is the home page and game grid.
 - `<slug>/index.html` is each game's page: the game embedded at the top, then its guide.
 - `games/<slug>/` holds each playable game: its build, `game.json` metadata and thumbnail.
