@@ -17,6 +17,7 @@ function loadGame() {
   // Keyboard games only hear key presses when the frame has focus.
   frame.addEventListener("load", () => frame.contentWindow.focus());
   start.replaceWith(frame);
+  window.gtag?.("event", "game_start", { game_name: gameName });
   return frame;
 }
 
@@ -39,15 +40,21 @@ function fillWindow(on) {
   if (on) scrollTo(0, 0);
 }
 
+const gameName = stage.dataset.title.replace(/ game$/, "");
+
 fullscreenButton.addEventListener("click", () => {
   const request = player.requestFullscreen || player.webkitRequestFullscreen;
   if (appleTouch || !request) {
     const on = !document.documentElement.classList.contains("player-max");
-    if (on) loadGame();
+    if (on) {
+      loadGame();
+      window.gtag?.("event", "full_screen", { game_name: gameName });
+    }
     fillWindow(on);
     return;
   }
   loadGame();
+  window.gtag?.("event", "full_screen", { game_name: gameName });
   request.call(player);
 });
 
