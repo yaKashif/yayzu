@@ -9,35 +9,101 @@
       content="Play free online games on Yayzu. No downloads, no sign-up: tap play and you're in, on your phone, tablet or computer."
     />
     <link rel="canonical" href="https://yayzu.com/" />
+    <meta name="robots" content="index, follow, max-image-preview:large" />
     <meta property="og:type" content="website" />
+    <meta property="og:site_name" content="Yayzu" />
+    <meta property="og:locale" content="en_US" />
     <meta property="og:title" content="Yayzu: Free Online Games" />
     <meta property="og:description" content="Free browser games you can play instantly. No downloads, no sign-up." />
     <meta property="og:url" content="https://yayzu.com/" />
-    <meta property="og:image" content="https://yayzu.com/games/boulder-bear/thumbnail.jpg" />
+    <meta property="og:image" content="https://yayzu.com/assets/og-image.jpg" />
+    <meta property="og:image:width" content="1200" />
+    <meta property="og:image:height" content="630" />
+    <meta property="og:image:alt" content="The Yayzu logo above the games Boulder Bear and Fruit Slash" />
     <meta name="twitter:card" content="summary_large_image" />
     <meta name="theme-color" content="#e6f1ff" />
-    <link rel="icon" href="assets/favicon.svg" type="image/svg+xml" />
+    <link rel="icon" href="/favicon.ico" sizes="48x48" />
+    <link rel="icon" href="/assets/favicon.svg" type="image/svg+xml" />
+    <link rel="apple-touch-icon" href="/apple-touch-icon.png" />
+    <link rel="manifest" href="/site.webmanifest" />
     <link rel="preconnect" href="https://fonts.googleapis.com" />
     <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
-    <link href="https://fonts.googleapis.com/css2?family=Fredoka:wght@500;600;700&display=swap" rel="stylesheet" />
-    <link rel="stylesheet" href="assets/site.css" />
+    <!-- The display font loads without holding up the first paint. -->
+    <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Fredoka:wght@600;700&display=swap" media="print" onload="this.media='all'" />
+    <noscript><link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Fredoka:wght@600;700&display=swap" /></noscript>
+    <link rel="stylesheet" href="/assets/site.css" />
+    <script type="application/ld+json">
+      {
+        "@context": "https://schema.org",
+        "@graph": [
+          {
+            "@type": "WebSite",
+            "@id": "https://yayzu.com/#website",
+            "url": "https://yayzu.com/",
+            "name": "Yayzu",
+            "alternateName": "Yayzu Games",
+            "description": "Free browser games you can play instantly. No downloads, no sign-up.",
+            "inLanguage": "en",
+            "publisher": { "@id": "https://yayzu.com/#organization" }
+          },
+          {
+            "@type": "Organization",
+            "@id": "https://yayzu.com/#organization",
+            "name": "Yayzu",
+            "url": "https://yayzu.com/",
+            "logo": {
+              "@type": "ImageObject",
+              "url": "https://yayzu.com/assets/icons/icon-512.png",
+              "width": 512,
+              "height": 512
+            }
+          },
+          {
+            "@type": "ItemList",
+            "name": "Games on Yayzu",
+            "itemListElement": [
+              { "@type": "ListItem", "position": 1, "url": "https://yayzu.com/boulder-bear/", "name": "Boulder Bear" },
+              { "@type": "ListItem", "position": 2, "url": "https://yayzu.com/fruit-slash/", "name": "Fruit Slash" }
+            ]
+          }
+        ]
+      }
+    </script>
   </head>
   <body>
     <header class="site-header">
       <div class="wrap">
-        <a class="logo" href="./" aria-label="Yayzu home"><span>y</span><span>a</span><span>y</span><span>z</span><span>u</span></a>
+        <a class="logo" href="/" aria-label="Yayzu home"><span>y</span><span>a</span><span>y</span><span>z</span><span>u</span></a>
         <p class="tagline">Tiny games. Big yay.</p>
       </div>
     </header>
 
     <main class="wrap">
       <section class="grid" aria-label="Games">
-        <a class="tile featured" href="boulder-bear/">
-          <img src="games/boulder-bear/thumbnail.jpg" alt="Boulder Bear: a teddy bear dodging boulders on a mountain trail" width="800" height="450" />
+        <a class="tile featured" href="/boulder-bear/">
+          <picture>
+            <source srcset="/games/boulder-bear/thumbnail.webp" type="image/webp" />
+            <img
+              src="/games/boulder-bear/thumbnail.jpg"
+              alt="Boulder Bear: a teddy bear dodging boulders on a mountain trail"
+              width="800"
+              height="450"
+              fetchpriority="high"
+            />
+          </picture>
           <span class="name">Boulder Bear</span>
         </a>
-        <a class="tile featured" href="fruit-slash/">
-          <img src="games/fruit-slash/thumbnail.jpg" alt="Fruit Slash: sliced watermelon and kiwi flying over a wooden board, with a bomb nearby" width="800" height="450" />
+        <a class="tile featured" href="/fruit-slash/">
+          <picture>
+            <source srcset="/games/fruit-slash/thumbnail.webp" type="image/webp" />
+            <img
+              src="/games/fruit-slash/thumbnail.jpg"
+              alt="Fruit Slash: sliced watermelon and kiwi flying over a wooden board, with a bomb nearby"
+              width="800"
+              height="450"
+              fetchpriority="high"
+            />
+          </picture>
           <span class="name">Fruit Slash</span>
         </a>
         <div class="tile soon">New game coming soon</div>
@@ -56,8 +122,8 @@
         <h2>Play anywhere</h2>
         <p>
           Every game on Yayzu runs right in your browser, on a phone, tablet, laptop or desktop. On a
-          phone, swipe and tap. On a computer, use the keyboard. Games load fast and work on modern
-          versions of Chrome, Safari, Edge and Firefox.
+          phone, swipe and tap. On a computer, use the keyboard or mouse. Games load fast and work
+          on modern versions of Chrome, Safari, Edge and Firefox.
         </p>
 
         <h2>Always free</h2>
@@ -75,12 +141,12 @@
 
         <h2>Games to start with</h2>
         <p>
-          <a href="boulder-bear/">Boulder Bear</a> puts a brave teddy at the foot of a mountain
+          <a href="/boulder-bear/">Boulder Bear</a> puts a brave teddy at the foot of a mountain
           while boulders come rolling down three hiking trails. Dodge them, jump them, or hop on top
           and ride them for as long as you can.
         </p>
         <p>
-          <a href="fruit-slash/">Fruit Slash</a> fills the screen with flying fruit for you to
+          <a href="/fruit-slash/">Fruit Slash</a> fills the screen with flying fruit for you to
           slice with a swipe. Chain combos for bonus points, and steer your blade clear of the
           bombs.
         </p>
@@ -88,7 +154,12 @@
     </main>
 
     <footer class="site-footer">
-      <div class="wrap">© 2026 Yayzu · <a href="boulder-bear/">Boulder Bear</a> · <a href="fruit-slash/">Fruit Slash</a></div>
+      <div class="wrap">
+        <nav aria-label="All games">
+          <a href="/">Yayzu</a> · <a href="/boulder-bear/">Boulder Bear</a> · <a href="/fruit-slash/">Fruit Slash</a>
+        </nav>
+        <p>© 2026 Yayzu</p>
+      </div>
     </footer>
   </body>
 </html>

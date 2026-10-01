@@ -9,59 +9,103 @@
       content="Play Fruit Slash free online. Swipe to slice flying fruit, chain combos and dodge the bombs. No download, works on phone and computer."
     />
     <link rel="canonical" href="https://yayzu.com/fruit-slash/" />
+    <meta name="robots" content="index, follow, max-image-preview:large" />
     <meta property="og:type" content="website" />
+    <meta property="og:site_name" content="Yayzu" />
+    <meta property="og:locale" content="en_US" />
     <meta property="og:title" content="Fruit Slash: Play Free on Yayzu" />
     <meta property="og:description" content="Slice flying fruit and dodge the bombs. Free to play in your browser." />
     <meta property="og:url" content="https://yayzu.com/fruit-slash/" />
     <meta property="og:image" content="https://yayzu.com/games/fruit-slash/thumbnail.jpg" />
+    <meta property="og:image:width" content="800" />
+    <meta property="og:image:height" content="450" />
+    <meta property="og:image:alt" content="Sliced watermelon and kiwi flying over a wooden board, with a bomb nearby" />
     <meta name="twitter:card" content="summary_large_image" />
     <meta name="theme-color" content="#e6f1ff" />
-    <link rel="icon" href="../assets/favicon.svg" type="image/svg+xml" />
+    <link rel="icon" href="/favicon.ico" sizes="48x48" />
+    <link rel="icon" href="/assets/favicon.svg" type="image/svg+xml" />
+    <link rel="apple-touch-icon" href="/apple-touch-icon.png" />
+    <link rel="manifest" href="/site.webmanifest" />
     <link rel="preconnect" href="https://fonts.googleapis.com" />
     <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
-    <link href="https://fonts.googleapis.com/css2?family=Fredoka:wght@500;600;700&display=swap" rel="stylesheet" />
-    <link rel="stylesheet" href="../assets/site.css" />
+    <!-- The display font loads without holding up the first paint. -->
+    <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Fredoka:wght@600;700&display=swap" media="print" onload="this.media='all'" />
+    <noscript><link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Fredoka:wght@600;700&display=swap" /></noscript>
+    <link rel="stylesheet" href="/assets/site.css" />
     <script type="application/ld+json">
       {
         "@context": "https://schema.org",
-        "@type": "VideoGame",
-        "name": "Fruit Slash",
-        "url": "https://yayzu.com/fruit-slash/",
-        "image": "https://yayzu.com/games/fruit-slash/thumbnail.jpg",
-        "description": "Swipe to slice flying fruit, chain combos, and never hit a bomb.",
-        "genre": ["Arcade", "Casual"],
-        "gamePlatform": ["Web browser", "Mobile", "Desktop"],
-        "applicationCategory": "Game",
-        "operatingSystem": "Any",
-        "offers": { "@type": "Offer", "price": "0", "priceCurrency": "USD" },
-        "publisher": { "@type": "Organization", "name": "Yayzu", "url": "https://yayzu.com/" }
+        "@graph": [
+          {
+            "@type": "VideoGame",
+            "@id": "https://yayzu.com/fruit-slash/#game",
+            "name": "Fruit Slash",
+            "url": "https://yayzu.com/fruit-slash/",
+            "image": "https://yayzu.com/games/fruit-slash/thumbnail.jpg",
+            "screenshot": "https://yayzu.com/games/fruit-slash/thumbnail.jpg",
+            "description": "Swipe to slice flying fruit, chain combos, and never hit a bomb. A free fruit-slicing arcade game for phone and computer.",
+            "genre": ["Arcade", "Casual"],
+            "keywords": "fruit slicing game, swipe game, fruit game, arcade, free online game",
+            "gamePlatform": ["Web browser", "Mobile", "Desktop"],
+            "applicationCategory": "GameApplication",
+            "operatingSystem": "Any",
+            "playMode": "SinglePlayer",
+            "inLanguage": "en",
+            "isAccessibleForFree": true,
+            "datePublished": "2026-10-01",
+            "offers": { "@type": "Offer", "price": "0", "priceCurrency": "USD" },
+            "author": { "@type": "Organization", "name": "Yayzu", "url": "https://yayzu.com/" },
+            "publisher": { "@type": "Organization", "name": "Yayzu", "url": "https://yayzu.com/" }
+          },
+          {
+            "@type": "BreadcrumbList",
+            "itemListElement": [
+              { "@type": "ListItem", "position": 1, "name": "Games", "item": "https://yayzu.com/" },
+              { "@type": "ListItem", "position": 2, "name": "Fruit Slash", "item": "https://yayzu.com/fruit-slash/" }
+            ]
+          }
+        ]
       }
     </script>
   </head>
   <body>
     <header class="site-header">
       <div class="wrap">
-        <a class="logo" href="../" aria-label="Yayzu home"><span>y</span><span>a</span><span>y</span><span>z</span><span>u</span></a>
+        <a class="logo" href="/" aria-label="Yayzu home"><span>y</span><span>a</span><span>y</span><span>z</span><span>u</span></a>
         <p class="tagline">Tiny games. Big yay.</p>
       </div>
     </header>
 
     <main class="wrap">
       <section class="player" id="player" aria-label="Play Fruit Slash">
-        <iframe
-          id="game-frame"
-          src="../games/fruit-slash/"
-          title="Fruit Slash game"
-          allow="fullscreen; autoplay"
-          allowfullscreen
-        ></iframe>
+        <div class="stage" id="stage" data-game="/games/fruit-slash/" data-title="Fruit Slash game">
+          <a class="start" id="start" href="/games/fruit-slash/" aria-label="Play Fruit Slash">
+            <picture>
+              <source srcset="/games/fruit-slash/thumbnail.webp" type="image/webp" />
+              <img
+                src="/games/fruit-slash/thumbnail.jpg"
+                alt="Sliced watermelon and kiwi flying over a wooden board, with a bomb nearby"
+                width="800"
+                height="450"
+                fetchpriority="high"
+              />
+            </picture>
+            <span class="start-button">Play</span>
+          </a>
+        </div>
         <div class="player-bar">
-          <h2>Fruit Slash</h2>
+          <p class="player-title">Fruit Slash</p>
           <button class="button" id="fullscreen" type="button">Full screen</button>
         </div>
       </section>
 
       <article class="copy">
+        <nav class="breadcrumbs" aria-label="Breadcrumb">
+          <ol>
+            <li><a href="/">Games</a></li>
+            <li aria-current="page">Fruit Slash</li>
+          </ol>
+        </nav>
         <h1>Fruit Slash</h1>
         <p class="lede">
           Fruit is flying everywhere and you've got the sharpest swipe in town. Slice it all in half,
@@ -145,25 +189,37 @@
 
         <h2>More games</h2>
         <p>
-          Want something with more running? Try <a href="../boulder-bear/">Boulder Bear</a>: help a
+          Want something with more running? Try <a href="/boulder-bear/">Boulder Bear</a>: help a
           brave teddy dodge, jump and ride the boulders rolling down a mountain.
         </p>
+        <div class="related">
+          <a class="tile" href="/boulder-bear/">
+            <picture>
+              <source srcset="/games/boulder-bear/thumbnail.webp" type="image/webp" />
+              <img
+                src="/games/boulder-bear/thumbnail.jpg"
+                alt="Boulder Bear: a teddy bear dodging boulders on a mountain trail"
+                width="800"
+                height="450"
+                loading="lazy"
+                decoding="async"
+              />
+            </picture>
+            <span class="name">Boulder Bear</span>
+          </a>
+        </div>
       </article>
     </main>
 
     <footer class="site-footer">
-      <div class="wrap">© 2026 Yayzu · <a href="../">More games</a></div>
+      <div class="wrap">
+        <nav aria-label="All games">
+          <a href="/">Yayzu</a> · <a href="/boulder-bear/">Boulder Bear</a> · <a href="/fruit-slash/">Fruit Slash</a>
+        </nav>
+        <p>© 2026 Yayzu</p>
+      </div>
     </footer>
 
-    <script>
-      // Full screen where the browser supports it (iPhone Safari doesn't for embedded games), and
-      // otherwise open the game on its own page.
-      const player = document.getElementById("player");
-      document.getElementById("fullscreen").addEventListener("click", () => {
-        const request = player.requestFullscreen || player.webkitRequestFullscreen;
-        if (request) request.call(player);
-        else location.href = "../games/fruit-slash/";
-      });
-    </script>
+    <script src="/assets/player.js" defer></script>
   </body>
 </html>

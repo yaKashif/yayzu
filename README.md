@@ -15,6 +15,27 @@ A static site served by GitHub Pages: plain HTML and CSS, no build step for the 
 | Boulder Bear | [/boulder-bear/](https://yayzu.com/boulder-bear/) | Built from the `boulder-bear` project with `npm run publish:yayzu`, which bundles the game and three.js into `games/boulder-bear/`. |
 | Fruit Slash | [/fruit-slash/](https://yayzu.com/fruit-slash/) | Built from the `fruit-slash` project with `npm run publish:yayzu`, which bundles the game and three.js into `games/fruit-slash/`. |
 
+## Publishing a game page
+
+When a game is accepted, these all need updating so search engines find it and every page links to
+it:
+
+1. **Game page**: copy an existing `<slug>/index.html`. Update the title (`<Game>: Play Free
+   Online on Yayzu`), the description (under 160 characters), the canonical and `og:` URLs, the
+   image size and alt text, the `VideoGame` and `BreadcrumbList` structured data, the iframe and
+   its poster, and the copy.
+2. **WebP thumbnail**: add `games/<slug>/thumbnail.webp` next to the JPEG. Pages use it through
+   `<picture>` and keep the JPEG as the fallback and for link previews.
+3. **Home page**: add a tile to the grid, a paragraph under "Games to start with", and an entry
+   in the `ItemList` structured data.
+4. **Links between pages**: add the game to the footer of every page, to `404.html`, and to the
+   "More games" tiles on the other game pages.
+5. **Sitemap**: add the page to `sitemap.xml` with its thumbnail, and update `lastmod` on any page
+   you changed.
+
+The game's own `games/<slug>/index.html` must have a canonical link pointing to its game page, so
+search engines index the page with the guide rather than the bare game.
+
 ## Submit your game
 
 Made a web game? We'd love to put it on Yayzu. Games are submitted as pull requests to this
