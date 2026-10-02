@@ -10,7 +10,7 @@ import {
   isMuted,
   setMuted,
 } from "./audio.js";
-import { SONGS, songNotes } from "./songs.js";
+import { SONGS, songNotes, loadSong } from "./songs.js";
 
 // ---------- Tuning ----------
 // Sideways distance from one step to the next, in world units: a full lane between unhurried
@@ -30,6 +30,7 @@ const STEP_REACH = { side: 0.5, above: 0.2, below: 0.38 };
 const STEP_WIDTH = 0.72;
 const STEP_CLEARANCE = 0.04;
 const FIRST_RISE = 1.1; // from the starting cloud up to the first step
+const MAX_RISE = 3.6; // the most any one step climbs, however long the note or rest before it
 const HOVER = 0.3; // the wisp floats this far above the step it's on
 const ANCHOR = 0.7; // the wisp's step sits this far down the screen
 // How far off the beat, in seconds, a note still counts as perfect, great or good. Long notes get
@@ -89,7 +90,10 @@ function store(key, value) {
 const starsBySong = load(STARS_KEY, {}); // song id -> best stars, 0 to 3
 const starsFor = (song) => starsBySong[song.id] || 0;
 // The first song is always open; each one after opens with enough stars on the one before it.
-const unlocked = (i) => i === 0 || (i > 0 && i < SONGS.length && starsFor(SONGS[i - 1]) >= STARS_TO_UNLOCK);
+// For testing on this computer, ?all opens every song.
+const OPEN_ALL = location.hostname === "localhost" && new URLSearchParams(location.search).has("all");
+const unlocked = (i) =>
+  i === 0 || (i > 0 && i < SONGS.length && (OPEN_ALL || starsFor(SONGS[i - 1]) >= STARS_TO_UNLOCK));
 // The song last chosen, saved by its id so it survives the list being reordered.
 const savedSong = Math.max(0, SONGS.findIndex((song) => song.id === load(SONG_KEY, null)));
 
@@ -309,6 +313,7 @@ const PITCH_SPREAD = 2.5; // lanes from the middle to where the highest and lowe
 
 function buildSteps(song) {
   const { melody } = song;
+  if (!melody?.length) return []; // an imported piece still loading
   const lo = Math.min(...melody.map((n) => n.midi));
   const hi = Math.max(...melody.map((n) => n.midi));
   const middle = (lo + hi) / 2;
@@ -376,7 +381,13 @@ function spaceSteps(steps) {
       scale = Math.max(scale, needed / (high.time - low.time));
     }
   }
-  for (const step of steps) step.y = FIRST_RISE + step.time * scale;
+  // A long rest (a held chord, a pause in the music) climbs no higher than MAX_RISE, so the next
+  // step always fits on the screen with the wisp.
+  let y = FIRST_RISE;
+  steps.forEach((step, i) => {
+    if (i) y += Math.min(MAX_RISE, (step.time - steps[i - 1].time) * scale);
+    step.y = y;
+  });
 }
 
 // ---------- The camera ----------
@@ -473,7 +484,8 @@ function strike(i, t) {
   step.grade = grade;
 
   // The note itself, a touch louder on strong beats and perfect timing.
-  const velocity = clamp(0.62 + accentOf(state.song, step.beat) + (grade === "perfect" ? 0.06 : 0) + rand(-0.03, 0.03), 0.3, 0.9);
+  const base = step.velocity ?? 0.62 + accentOf(state.song, step.beat); // imported scores carry their own accents
+  const velocity = clamp(base + (grade === "perfect" ? 0.06 : 0) + rand(-0.03, 0.03), 0.3, 0.9);
   // Whatever the last note still had to play would now clash, so it goes.
   cancelLater();
   // The note sounds on its beat: an early perfect tap waits for it, a late one plays at once.
@@ -485,7 +497,8 @@ function strike(i, t) {
   });
   for (const a of step.accompaniment) {
     later(fromNow(a.offset), (at) => {
-      for (const midi of a.notes) playPiano(midi, { velocity: a.velocity, hold: 2 * state.spb + 0.4, at });
+      const hold = a.beats ? a.beats * state.spb + 0.15 : 2 * state.spb + 0.4;
+      for (const midi of a.notes) playPiano(midi, { velocity: a.velocity, hold, at });
     });
   }
   for (const c of step.chords) {
@@ -1131,6 +1144,7 @@ const ui = {
   sound: document.getElementById("sound"),
   pause: document.getElementById("pause"),
   progress: document.getElementById("progress-bar"),
+  songCredit: document.getElementById("song-credit"),
   listen: document.getElementById("listen"),
   stars: document.getElementById("stars"),
   songs: document.getElementById("songs"),
@@ -1164,7 +1178,14 @@ function starRow(count, className) {
 }
 
 // The card over the game: the song list, a pause, or a finished song's stars.
-function showCard({ title, message, button, stars = null, list = false, again = false, menu = false }) {
+// Songs from published scores credit them under the card.
+function showSongCredit() {
+  ui.songCredit.textContent = state.song.credit || "";
+  ui.songCredit.hidden = !state.song.credit;
+}
+
+function showCard({ title, message, button, stars = null, list = false, again = false, againLabel = "Play again", menu = false }) {
+  showSongCredit();
   ui.title.textContent = title;
   ui.message.textContent = message;
   ui.play.textContent = button;
@@ -1172,6 +1193,7 @@ function showCard({ title, message, button, stars = null, list = false, again = 
   ui.stars.hidden = stars === null;
   ui.songs.hidden = !list;
   ui.again.hidden = !again;
+  ui.again.textContent = againLabel;
   ui.menu.hidden = !menu;
   ui.overlay.hidden = false;
   if (list) renderSongs();
@@ -1224,20 +1246,32 @@ function showPianoStatus() {
 // melody, left hand and closing chord. Any tap or hop stops it.
 let listening = null; // { endsAt } while the song plays
 
-function startListening() {
+async function startListening() {
   unlockAudio();
-  silence();
   const { song } = state;
+  if (!song.melody) {
+    ui.listen.textContent = "…";
+    try {
+      await loadSong(song);
+    } catch {
+      updateListenButton();
+      return;
+    }
+    if (state.song !== song) return; // the player moved on while it loaded
+  }
+  silence();
   const spb = 60 / song.bpm;
   const start = song.melody[0].beat;
   const lead = 0.15; // a breath before the first note
   const at = (beat) => lead + (beat - start) * spb;
   for (const n of song.melody) {
-    later(at(n.beat), (time) => playPiano(n.midi, { velocity: 0.64 + accentOf(song, n.beat), hold: n.beats * spb + 0.3, at: time }));
+    const velocity = (n.velocity ?? 0.62 + accentOf(song, n.beat)) + 0.02;
+    later(at(n.beat), (time) => playPiano(n.midi, { velocity, hold: n.beats * spb + 0.3, at: time }));
   }
   for (const a of song.accompaniment) {
     later(at(a.beat), (time) => {
-      for (const midi of a.notes) playPiano(midi, { velocity: a.velocity, hold: 2 * spb + 0.4, at: time });
+      const hold = a.beats ? a.beats * spb + 0.15 : 2 * spb + 0.4;
+      for (const midi of a.notes) playPiano(midi, { velocity: a.velocity, hold, at: time });
     });
   }
   const last = song.melody[song.melody.length - 1];
@@ -1268,9 +1302,18 @@ function selectSong(index) {
   store(SONG_KEY, SONGS[index].id);
 }
 
-// A fresh climb: a new random path up the same song.
+// A fresh climb: a new random path up the same song. An imported piece that hasn't loaded yet
+// gets its steps once it arrives, if it's still the one on show.
 function reset() {
-  state.steps = buildSteps(state.song);
+  const { song } = state;
+  state.steps = buildSteps(song);
+  if (!song.melody) {
+    loadSong(song)
+      .then(() => {
+        if (state.song === song && state.mode === "title") reset();
+      })
+      .catch(() => {});
+  }
   Object.assign(state, {
     cur: -1,
     spb: 60 / state.song.bpm,
@@ -1290,9 +1333,22 @@ function reset() {
   ui.song.textContent = state.song.title;
 }
 
-function startGame(index = state.songIndex) {
+// Starts a song, first fetching its notes if it's an imported piece that hasn't loaded yet.
+async function startGame(index = state.songIndex) {
   if (!unlocked(index)) return;
   unlockAudio();
+  const song = SONGS[index];
+  if (!song.melody) {
+    const label = ui.play.textContent;
+    ui.play.textContent = "Loading…";
+    try {
+      await loadSong(song);
+    } catch {
+      ui.play.textContent = "Couldn't load. Try again";
+      return;
+    }
+    ui.play.textContent = label;
+  }
   stopListening();
   silence(); // the last song's closing chord would ring on into the new one
   if (state.mode === "paused") pausedFor += performance.now() - pausedAt;
@@ -1339,6 +1395,7 @@ function chooseSong(step) {
   reset();
   showPianoStatus();
   renderSongs();
+  showSongCredit();
 }
 
 function togglePause() {
@@ -1347,7 +1404,14 @@ function togglePause() {
     state.mode = "paused";
     stopListening();
     cancelLater();
-    showCard({ title: "Paused", message: `${state.cur + 1} of ${state.steps.length} notes played.`, button: "Resume", menu: true });
+    showCard({
+      title: "Paused",
+      message: `${state.cur + 1} of ${state.steps.length} notes played.`,
+      button: "Resume",
+      again: true,
+      againLabel: "Restart",
+      menu: true,
+    });
   } else if (state.mode === "paused") {
     pausedFor += performance.now() - pausedAt;
     state.mode = "playing";
@@ -1452,6 +1516,7 @@ if (location.hostname === "localhost") {
     now,
     expectedNext,
     buildSteps,
+    loadSong,
     cameraGoal,
     SONGS,
     // Drives one frame by hand, for when animation frames don't run (a hidden window).

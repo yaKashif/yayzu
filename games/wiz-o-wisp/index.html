@@ -130,12 +130,13 @@
         display: grid;
         place-items: center;
       }
+      /* How much of the song is played: a thin line along the very top of the screen. */
       #progress {
         position: fixed;
-        z-index: 2;
+        z-index: 6;
         left: 0;
         right: 0;
-        bottom: 0;
+        top: 0;
         height: 4px;
         background: rgba(255, 240, 232, 0.16);
         pointer-events: none;
@@ -356,6 +357,7 @@
         </div>
         <p id="controls"></p>
         <a class="more-games" href="../../" target="_top">More games on Yayzu</a>
+        <p class="credit" id="song-credit" hidden></p>
         <p class="credit">
           Piano: Salamander Grand Piano by Alexander Holm,
           <a href="https://creativecommons.org/licenses/by/3.0/" target="_blank" rel="noopener">CC BY 3.0</a>

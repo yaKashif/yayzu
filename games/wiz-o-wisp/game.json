@@ -2,7 +2,7 @@
   "slug": "wiz-o-wisp",
   "title": "Wiz o Wisp",
   "shortDescription": "Hop a glowing wisp up steps of light and play piano songs on the beat.",
-  "description": "A little wisp of light climbs a stair of floating steps into a glowing sky. Every step is a note of the song, spaced just like the music: quick notes sit close together, long notes leave a big jump. Tap left or right to hop to the next step and the grand piano plays the note. Land on the beat for perfect hits, earn up to three stars per song, and unlock 49 songs, from nursery rhymes and Christmas carols to Beethoven, Mozart and Bach.",
+  "description": "A little wisp of light climbs a stair of floating steps into a glowing sky. Every step is a note of the song, spaced just like the music: quick notes sit close together, long notes leave a big jump. Tap left or right to hop to the next step and the grand piano plays the note. Land on the beat for perfect hits, earn up to three stars per song, and unlock 40 songs, from nursery rhymes and Christmas carols to complete pieces by Beethoven, Mozart and Bach played from real scores.",
   "genres": [
     "Music",
     "Rhythm",
@@ -78,13 +78,14 @@
     "url": "https://yayzu.com"
   },
   "credits": [
-    "Piano: Salamander Grand Piano by Alexander Holm, CC BY 3.0"
+    "Piano: Salamander Grand Piano by Alexander Holm, CC BY 3.0",
+    "Scores: the Mutopia Project; Canon in D typeset by Michael Fischer v. Mollard, CC BY 4.0; the rest public domain"
   ],
-  "version": "1.0.0",
+  "version": "1.1.0",
   "released": "2026-10-02",
   "sizeKB": {
-    "total": 85,
-    "initialGzip": 21
+    "total": 488,
+    "initialGzip": 20
   },
   "contentRating": "everyone"
 }

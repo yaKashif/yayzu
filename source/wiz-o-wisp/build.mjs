@@ -1,8 +1,8 @@
 // Builds a self-contained copy of the game for publishing: the game bundled and minified into one
-// game.js, and index.html pointed at it.
+// game.js, index.html pointed at it, and the imported songs' note files (loaded when chosen).
 // Usage: node build.mjs [outDir]   (default: dist)
 import { build } from "esbuild";
-import { mkdir, readFile, writeFile } from "node:fs/promises";
+import { cp, mkdir, readFile, rm, writeFile } from "node:fs/promises";
 import path from "node:path";
 import { assertNoEnvLeak } from "../../tools/check-bundle.mjs";
 
@@ -29,5 +29,7 @@ let html = await readFile("index.html", "utf8");
 html = replace(html, '<script type="module" src="/src/main.js"></script>', '<script type="module" src="./game.js"></script>');
 html = replace(html, '<p id="controls"></p>', '<p id="controls"></p>\n        <a class="more-games" href="../../" target="_top">More games on Yayzu</a>');
 await writeFile(path.join(outDir, "index.html"), html);
+await rm(path.join(outDir, "songs"), { recursive: true, force: true });
+await cp("songs", path.join(outDir, "songs"), { recursive: true });
 
 console.log(`Built to ${outDir}`);
