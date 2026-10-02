@@ -1,0 +1,178 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <meta
+      name="viewport"
+      content="width=device-width, initial-scale=1, maximum-scale=1, user-scalable=no, viewport-fit=cover"
+    />
+    <meta name="theme-color" content="#bfe3ff" />
+    <title>Boulder Bear</title>
+    <meta
+      name="description"
+      content="Help a teddy bear dodge, jump and ride boulders rolling down a mountain. A free browser game, no download needed."
+    />
+    <link rel="canonical" href="https://yayzu.com/boulder-bear/" />
+    <meta property="og:title" content="Boulder Bear" />
+    <meta
+      property="og:description"
+      content="Dodge, jump and ride boulders rolling down a mountain. Free to play in your browser."
+    />
+    <meta property="og:image" content="https://yayzu.com/games/boulder-bear/thumbnail.jpg" />
+    <link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'%3E%3Ctext y='.9em' font-size='90'%3E%F0%9F%A7%B8%3C/text%3E%3C/svg%3E" />
+    <style>
+      html,
+      body {
+        margin: 0;
+        height: 100%;
+        overflow: hidden;
+        background: #bfe3ff;
+        font-family: system-ui, -apple-system, "Segoe UI", Roboto, sans-serif;
+        touch-action: none;
+        overscroll-behavior: none;
+        -webkit-user-select: none;
+        user-select: none;
+        -webkit-tap-highlight-color: transparent;
+      }
+      canvas {
+        display: block;
+        touch-action: none; /* swipes go to the game, never to scrolling or zooming */
+        width: 100vw;
+        height: 100vh;
+        height: 100dvh;
+      }
+      [hidden] {
+        display: none !important;
+      }
+      #hud {
+        position: fixed;
+        z-index: 2;
+        top: max(14px, env(safe-area-inset-top));
+        left: max(14px, env(safe-area-inset-left));
+        right: max(14px, env(safe-area-inset-right));
+        display: flex;
+        gap: 8px;
+        pointer-events: none;
+      }
+      .hud-group {
+        display: flex;
+        gap: 8px;
+      }
+      .hud-right {
+        margin-left: auto;
+      }
+      .pill {
+        background: rgba(255, 250, 242, 0.88);
+        color: #4a3020;
+        border-radius: 999px;
+        padding: 8px 16px;
+        font-size: clamp(14px, 4vw, 18px);
+        font-weight: 600;
+        box-shadow: 0 2px 8px rgba(40, 60, 90, 0.15);
+      }
+      .pill b {
+        font-variant-numeric: tabular-nums;
+        margin-left: 6px;
+      }
+      .icon {
+        pointer-events: auto;
+        border: 0;
+        cursor: pointer;
+        width: 42px;
+        height: 42px;
+        padding: 0;
+        font-size: 17px;
+        display: grid;
+        place-items: center;
+      }
+      #overlay {
+        position: fixed;
+        z-index: 1;
+        inset: 0;
+        display: grid;
+        place-items: center;
+        padding: 16px;
+        background: rgba(28, 40, 64, 0.35);
+      }
+      .card {
+        width: min(400px, 100%);
+        box-sizing: border-box;
+        background: #fffaf2;
+        border-radius: 22px;
+        padding: 28px 24px;
+        text-align: center;
+        box-shadow: 0 12px 40px rgba(20, 30, 50, 0.3);
+        color: #4a3020;
+      }
+      .card h1 {
+        margin: 0 0 8px;
+        font-size: clamp(28px, 8vw, 36px);
+        color: #9a5a28;
+      }
+      .card p {
+        margin: 0 0 18px;
+        line-height: 1.45;
+        font-size: 16px;
+      }
+      #play {
+        width: 100%;
+        max-width: 260px;
+        min-height: 54px;
+        border: 0;
+        border-radius: 999px;
+        background: #e8743b;
+        color: #fff;
+        font-size: 20px;
+        font-weight: 700;
+        cursor: pointer;
+        box-shadow: 0 4px 0 #b9531f;
+      }
+      #play:active {
+        transform: translateY(2px);
+        box-shadow: 0 2px 0 #b9531f;
+      }
+      #controls {
+        margin: 18px 0 0;
+        font-size: 14px;
+        color: #7a6250;
+      }
+      .more-games {
+        display: inline-block;
+        margin-top: 14px;
+        color: #c25a22;
+        font-weight: 600;
+        text-decoration: none;
+      }
+    </style>
+    <script type="importmap">
+      { "imports": { "three": "/node_modules/three/build/three.module.js" } }
+    </script>
+  </head>
+  <body>
+    <canvas id="game"></canvas>
+
+    <div id="hud">
+      <div id="scores" class="hud-group" hidden>
+        <div class="pill">Score<b id="score">0</b></div>
+        <div class="pill">Best<b id="best">0</b></div>
+      </div>
+      <div class="hud-group hud-right">
+        <button id="sound" class="pill icon" aria-label="Mute">🔊</button>
+        <button id="pause" class="pill icon" aria-label="Pause" hidden>II</button>
+      </div>
+    </div>
+
+    <div id="overlay">
+      <div class="card">
+        <h1 id="title">Boulder Bear</h1>
+        <p id="message">
+          Boulders are rolling down the mountain. Dodge them, jump them, or hop on top and ride!
+        </p>
+        <button id="play">Play</button>
+        <p id="controls"></p>
+      </div>
+    </div>
+
+    <script type="module" src="/src/main.js"></script>
+  </body>
+</html>

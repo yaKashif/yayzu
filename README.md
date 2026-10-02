@@ -40,6 +40,8 @@ There are a few ways to help make Yayzu better:
   better, in an [issue](https://github.com/yaKashif/yayzu/issues/new).
 - **Fix a game page.** Spotted a typo or a confusing tip? Each game's page is in its own folder,
   like `fruit-slash/`. Send a pull request with the fix.
+- **Improve a game.** The code for Yayzu's own games is open, in [`source/`](source/): Boulder
+  Bear and Fruit Slash, built with three.js. Bug fixes and polish are welcome.
 
 ## Submit your game
 

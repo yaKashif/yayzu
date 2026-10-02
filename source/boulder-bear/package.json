@@ -1,0 +1,18 @@
+{
+  "name": "boulder-bear",
+  "version": "1.0.0",
+  "description": "Teddy vs boulders: a Subway Surfers style lane dodger in three.js",
+  "scripts": {
+    "dev": "node server.js",
+    "start": "node server.js",
+    "build": "node build.mjs",
+    "publish:yayzu": "node build.mjs ../../games/boulder-bear"
+  },
+  "dependencies": {
+    "three": "^0.186.1"
+  },
+  "private": true,
+  "devDependencies": {
+    "esbuild": "^0.28.2"
+  }
+}
