@@ -1,0 +1,90 @@
+{
+  "slug": "wiz-o-wisp",
+  "title": "Wiz o Wisp",
+  "shortDescription": "Hop a glowing wisp up steps of light and play piano songs on the beat.",
+  "description": "A little wisp of light climbs a stair of floating steps into a glowing sky. Every step is a note of the song, spaced just like the music: quick notes sit close together, long notes leave a big jump. Tap left or right to hop to the next step and the grand piano plays the note. Land on the beat for perfect hits, earn up to three stars per song, and unlock 49 songs, from nursery rhymes and Christmas carols to Beethoven, Mozart and Bach.",
+  "genres": [
+    "Music",
+    "Rhythm",
+    "Casual"
+  ],
+  "tags": [
+    "piano",
+    "rhythm",
+    "music",
+    "relaxing",
+    "classical",
+    "mobile"
+  ],
+  "howToPlay": [
+    "Tap the side the next step is on, left or right, to hop the wisp onto it and play its note.",
+    "Hop on the beat: the ring closing in on the next step meets its edge when the note is due.",
+    "Steps go right when the tune climbs and left when it falls, and their spacing follows the rhythm.",
+    "The song waits for you, so there's no rush: a wrong-way hop just bumps the wisp back.",
+    "Earn stars by the share of perfect notes: one at half, two at 80%, three when every note is perfect. Two stars unlock the next song.",
+    "Press the play button beside the song's name to hear it first."
+  ],
+  "controls": {
+    "keyboard": [
+      {
+        "action": "Hop left",
+        "keys": [
+          "ArrowLeft",
+          "A"
+        ]
+      },
+      {
+        "action": "Hop right",
+        "keys": [
+          "ArrowRight",
+          "D"
+        ]
+      },
+      {
+        "action": "Pause",
+        "keys": [
+          "P",
+          "Escape"
+        ]
+      },
+      {
+        "action": "Mute",
+        "keys": [
+          "M"
+        ]
+      }
+    ],
+    "touch": [
+      {
+        "action": "Hop left",
+        "gesture": "Tap the left half of the screen"
+      },
+      {
+        "action": "Hop right",
+        "gesture": "Tap the right half of the screen"
+      }
+    ]
+  },
+  "orientation": "any",
+  "platforms": [
+    "desktop",
+    "mobile"
+  ],
+  "entry": "index.html",
+  "thumbnail": "thumbnail.jpg",
+  "engine": "Canvas 2D and Web Audio",
+  "author": {
+    "name": "Yayzu",
+    "url": "https://yayzu.com"
+  },
+  "credits": [
+    "Piano: Salamander Grand Piano by Alexander Holm, CC BY 3.0"
+  ],
+  "version": "1.0.0",
+  "released": "2026-10-02",
+  "sizeKB": {
+    "total": 85,
+    "initialGzip": 21
+  },
+  "contentRating": "everyone"
+}

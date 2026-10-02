@@ -1,0 +1,15 @@
+{
+  "name": "wiz-o-wisp",
+  "version": "0.1.0",
+  "private": true,
+  "description": "Hop a glowing wisp up steps of light, one piano note per hop: a relaxing rhythm game",
+  "scripts": {
+    "dev": "node server.js",
+    "start": "node server.js",
+    "build": "node build.mjs",
+    "publish:yayzu": "node build.mjs ../../games/wiz-o-wisp"
+  },
+  "devDependencies": {
+    "esbuild": "^0.28.2"
+  }
+}
