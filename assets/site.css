@@ -412,3 +412,23 @@ summary {
 .site-footer p {
   margin: 4px 0 0;
 }
+
+/* A plain link to the Buy Me a Coffee page: no widget script, so nothing slows the page down. */
+.site-footer .coffee {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  margin-top: 10px;
+  padding: 8px 16px;
+  border-radius: 999px;
+  background: #ffdd00;
+  color: #23324a;
+  font-weight: 700;
+  text-decoration: none;
+  box-shadow: var(--shadow);
+}
+
+.site-footer .coffee:hover,
+.site-footer .coffee:focus-visible {
+  background: #ffe84d;
+}
