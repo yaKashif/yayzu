@@ -285,51 +285,6 @@ const TUNES = [
     harmony: "C | C | C | C | F | C | D7 | G7 | C | C | C | C | F | C | G7 | C",
   },
   {
-    id: "hot-cross-buns",
-    title: "Hot Cross Buns",
-    key: "C",
-    bpm: 96,
-    bar: 4,
-    melody: repeat(
-      `E5 D5 C5:2 | E5 D5 C5:2 | C5:0.5 C5:0.5 C5:0.5 C5:0.5 D5:0.5 D5:0.5 D5:0.5 D5:0.5 | E5 D5 C5:2`,
-      2
-    ),
-  },
-  {
-    id: "au-clair",
-    title: "Au Clair de la Lune",
-    key: "C",
-    bpm: 100,
-    bar: 4,
-    melody: `
-      C5 C5 C5 D5 | E5:2 D5:2 | C5 E5 D5 D5 | C5:4 |
-      C5 C5 C5 D5 | E5:2 D5:2 | C5 E5 D5 D5 | C5:4 |
-      D5 D5 D5 D5 | A4:2 A4:2 | D5 C5 B4 A4 | G4:4 |
-      C5 C5 C5 D5 | E5:2 D5:2 | C5 E5 D5 D5 | C5:4`,
-  },
-  {
-    id: "row-your-boat",
-    title: "Row, Row, Row Your Boat",
-    key: "C",
-    bpm: 180, // eighth notes
-    bar: 6,
-    melody: `
-      C5:3 C5:3 | C5:2 D5 E5:3 | E5:2 D5 E5:2 F5 | G5:6 |
-      C6 C6 C6 G5 G5 G5 | E5 E5 E5 C5 C5 C5 | G5:2 F5 E5:2 D5 | C5:6`,
-  },
-  {
-    id: "yankee-doodle",
-    title: "Yankee Doodle",
-    key: "C",
-    bpm: 120,
-    bar: 4,
-    melody: `
-      C5 C5 D5 E5 | C5 E5 D5 G4 | C5 C5 D5 E5 | C5:2 B4:2 |
-      C5 C5 D5 E5 | F5 E5 D5 C5 | B4 G4 A4 B4 | C5:2 C5:2 |
-      A4:1.5 B4:0.5 A4 G4 | A4 B4 C5:2 | G4:1.5 A4:0.5 G4 F4 | E4:2 G4:2 |
-      A4:1.5 B4:0.5 A4 G4 | A4 B4 C5 A4 | G4 C5 B4 D5 | C5:2 C5:2`,
-  },
-  {
     id: "auld-lang-syne",
     title: "Auld Lang Syne",
     key: "F",
@@ -433,16 +388,6 @@ const TUNES = [
       G4 |
       E5 D5 C5 | D5 C5 A4 | G4 E4:2 | r:2 G4 | E5 D5 C5 | C5 B4 C5 | D5:3 | r:2 G4 |
       E5 D5 C5 | D5 C5 A4 | G4 E4:2 | r:2 G4 | A4 D5 C5 | B4 A4 B4 | C5:3`,
-  },
-  {
-    id: "pop-goes-the-weasel",
-    title: "Pop Goes the Weasel",
-    key: "C",
-    bpm: 192, // eighth notes
-    bar: 6,
-    melody: `
-      C5:2 C5 D5:2 D5 | E5 G5 E5 C5:3 | C5:2 C5 D5:2 D5 | E5:3 C5:3 |
-      C5:2 C5 D5:2 D5 | E5 G5 E5 C5:3 | A5:3 D5:2 F5 | E5:3 C5:3`,
   },
   {
     id: "drunken-sailor",
