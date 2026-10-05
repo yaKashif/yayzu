@@ -81,11 +81,11 @@
     "Piano: Salamander Grand Piano by Alexander Holm, CC BY 3.0",
     "Scores: the Mutopia Project; Canon in D typeset by Michael Fischer v. Mollard, CC BY 4.0; the rest public domain"
   ],
-  "version": "1.1.0",
+  "version": "1.1.1",
   "released": "2026-10-02",
   "sizeKB": {
-    "total": 488,
-    "initialGzip": 20
+    "total": 460,
+    "initialGzip": 21
   },
   "contentRating": "everyone"
 }

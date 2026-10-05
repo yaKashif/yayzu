@@ -6,6 +6,9 @@ import {
   cancelLater,
   silence,
   pianoProgress,
+  startRecording,
+  recordingTick,
+  renderRecording,
   sfx,
   isMuted,
   setMuted,
@@ -13,24 +16,27 @@ import {
 import { SONGS, songNotes, loadSong } from "./songs.js";
 
 // ---------- Tuning ----------
-// Sideways distance from one step to the next, in world units: a full lane between unhurried
-// notes, closing to side by side (just clear of each other) for notes that come almost at once.
-const LANE = 1;
-const SIDE_BY_SIDE = 0.8;
-const QUICK = { close: 0.2, apart: 0.5 }; // seconds between notes: side by side at or under close, a lane apart from apart up
-// Each second between two notes lifts the next step this much, so the steps are spaced exactly
-// like the music. A song whose quick notes would put two steps on top of each other is spaced out
-// more, all of it alike, until they clear (see spaceSteps).
-const RISE_PER_SECOND = 1.4;
-// How far a step's look reaches from its centre, in step widths: its cloud sideways, its disc of
-// light above, and its cloud below. Two steps must keep at least STEP_CLEARANCE between these.
-const STEP_REACH = { side: 0.5, above: 0.2, below: 0.38 };
 // Every step is the same width, narrow enough that neighbouring steps, even side by side, never
-// touch: how long a note lasts shows in the climb to the next step instead.
+// touch: how long a note lasts shows in the hop to the next step instead.
 const STEP_WIDTH = 0.72;
-const STEP_CLEARANCE = 0.04;
+// How far a step's look reaches from its centre, in step widths: its cloud sideways, its disc of
+// light above, and its cloud below.
+const STEP_REACH = { side: 0.5, above: 0.2, below: 0.38 };
+// The hop from one step to the next, centre to centre, is as long as the wait between their notes,
+// at one scale for the whole song, so the steps are spaced exactly like the music: twice the wait,
+// twice the hop. The scale is HOP_SPEED world units a second, or more in a song with quick notes,
+// so that even they get a hop of HOP_MIN (see hopScale).
+const HOP_SPEED = 2;
+// A hop leans as low as FLATTEST above level and goes no more than a LANE sideways, so quick notes
+// sit side by side, each a little higher, and longer ones climb steeply.
+const LANE = 1;
+const FLATTEST = (20 * Math.PI) / 180;
+// The shortest hop: side by side, a little clear of each other. Any two hops climb further than a
+// step reaches above and below, so no two steps ever overlap.
+const HOP_MIN = (STEP_REACH.side * 2 * STEP_WIDTH + 0.08) / Math.cos(FLATTEST);
+// The longest: a long rest climbs no more than this, and the camera pulls back to show it.
+const HOP_MAX = 8;
 const FIRST_RISE = 1.1; // from the starting cloud up to the first step
-const MAX_RISE = 3.6; // the most any one step climbs, however long the note or rest before it
 const HOVER = 0.3; // the wisp floats this far above the step it's on
 const ANCHOR = 0.7; // the wisp's step sits this far down the screen
 // How far off the beat, in seconds, a note still counts as perfect, great or good. Long notes get
@@ -302,13 +308,17 @@ const halfFlash = { [-1]: -9, [1]: -9 }; // when each half of the screen was las
 let pausedAt = 0;
 let pausedFor = 0;
 // Game time in seconds. It stands still while paused, so the beat picks up where it left off.
-const now = () => ((state.mode === "paused" ? pausedAt : performance.now()) - pausedFor) / 1000;
+// While a demo video is recorded the clock is stepped frame by frame instead (see the localhost
+// hook at the end); otherwise it's the real one.
+let virtualMs = null;
+const clockMs = () => virtualMs ?? performance.now();
+const now = () => ((state.mode === "paused" ? pausedAt : clockMs()) - pausedFor) / 1000;
 
 // ---------- The steps ----------
-// One step per melody note, higher by the time since the last note, and a lane to the side laid
-// out like a keyboard: right when the tune climbs, left when it falls. A repeated note drifts
-// toward where its pitch sits (low notes on the left, high on the right), or either way at random
-// once it's there, so the path traces the shape of the melody.
+// One step per melody note, a hop from the last as long as the wait between them, and to the side
+// like a keyboard: right when the tune climbs, left when it falls. A repeated note drifts toward
+// where its pitch sits (low notes on the left, high on the right), or either way at random once
+// it's there, so the path traces the shape of the melody.
 const PITCH_SPREAD = 2.5; // lanes from the middle to where the highest and lowest notes sit
 
 function buildSteps(song) {
@@ -319,24 +329,31 @@ function buildSteps(song) {
   const middle = (lo + hi) / 2;
   const spb = 60 / song.bpm;
   const start = melody[0].beat;
+  const waits = melody.slice(1).map((note, i) => (note.beat - melody[i].beat) * spb);
+  const scale = hopScale(waits);
   const steps = [];
   let x = 0;
+  let y = FIRST_RISE;
   let prev = null;
-  for (const note of melody) {
+  melody.forEach((note, i) => {
     const home = ((note.midi - middle) / Math.max(1, (hi - lo) / 2)) * PITCH_SPREAD;
     let dir;
     if (prev && note.midi !== prev.midi) dir = note.midi > prev.midi ? 1 : -1;
     else if (Math.abs(x - home) > 0.5) dir = home > x ? 1 : -1;
     else dir = Math.random() < 0.5 ? -1 : 1;
-    const gap = prev ? (note.beat - prev.beat) * spb : QUICK.apart;
-    const hurry = clamp((QUICK.apart - gap) / (QUICK.apart - QUICK.close), 0, 1);
-    x += dir * lerp(LANE, SIDE_BY_SIDE, hurry);
+    if (!prev) x = dir * LANE;
+    else {
+      const length = clamp(waits[i - 1] * scale, HOP_MIN, HOP_MAX);
+      const side = Math.min(length * Math.cos(FLATTEST), LANE);
+      x += dir * side;
+      y += Math.sqrt(length * length - side * side);
+    }
     // Low notes glow gold, high ones lilac.
     const height = hi > lo ? (note.midi - lo) / (hi - lo) : 0.5;
     steps.push({
       ...note,
       x,
-      y: 0, // set by spaceSteps
+      y,
       time: (note.beat - start) * spb, // seconds after the first note, at the song's own tempo
       dir,
       hue: mod(42 - height * 112, 360),
@@ -349,8 +366,7 @@ function buildSteps(song) {
       grade: null,
     });
     prev = note;
-  }
-  spaceSteps(steps);
+  });
   // Hang each accompaniment note and chord change on the melody note it follows, timed from it.
   const owner = (beat) => {
     let k = 0;
@@ -368,41 +384,33 @@ function buildSteps(song) {
   return steps;
 }
 
-// Lifts every step by its note's time, at one scale for the whole song: the smallest scale, no
-// less than RISE_PER_SECOND, at which no two steps that line up sideways come close enough to touch.
-function spaceSteps(steps) {
-  let scale = RISE_PER_SECOND;
-  for (let i = 0; i < steps.length; i++) {
-    const low = steps[i];
-    for (let j = i + 1; j < steps.length; j++) {
-      const high = steps[j];
-      if (Math.abs(low.x - high.x) >= STEP_REACH.side * (low.width + high.width)) continue;
-      const needed = STEP_REACH.above * low.width + STEP_REACH.below * high.width + STEP_CLEARANCE;
-      scale = Math.max(scale, needed / (high.time - low.time));
-    }
-  }
-  // A long rest (a held chord, a pause in the music) climbs no higher than MAX_RISE, so the next
-  // step always fits on the screen with the wisp.
-  let y = FIRST_RISE;
-  steps.forEach((step, i) => {
-    if (i) y += Math.min(MAX_RISE, (step.time - steps[i - 1].time) * scale);
-    step.y = y;
-  });
+// A song's hop length for each second of waiting, in world units: HOP_SPEED, or enough that its
+// quick notes still get a hop of HOP_MIN. The quickest fiftieth of the waits are left out, so one
+// stray quick note (a grace note, say) doesn't spread out the whole piece; they get HOP_MIN.
+function hopScale(waits) {
+  const sorted = [...waits].sort((a, b) => a - b);
+  if (!sorted.length) return HOP_SPEED;
+  return Math.max(HOP_SPEED, HOP_MIN / sorted[Math.floor(sorted.length * 0.02)]);
 }
 
 // ---------- The camera ----------
 // The camera follows the wisp, leaning partway toward the next step so the way ahead is always on
 // show. A next step that would still sit off the screen, or crowded against its edge, pulls the
-// camera further, as far as it can go while the wisp stays in view; and if either one is actually
-// off the screen, the camera hurries.
+// camera further, as far as it can go while the wisp stays in view; a step too far away for that
+// (after a long note or a rest) pulls it back as well; and if either one is actually off the
+// screen, the camera hurries.
 const LEAN = { x: 0.5, y: 0.35 }; // how far toward the next step the camera leans
 const FRAME = { top: 0.22, bottom: 0.14, side: 0.12 }; // edges of the screen kept clear, as fractions of it
+const ZOOM_MIN = 0.6; // the furthest the camera pulls back
 
 function cameraGoal() {
-  const goal = { x: wisp.x, y: wisp.groundY, urgent: false };
+  const goal = { x: wisp.x, y: wisp.groundY, zoom: 1, urgent: false };
   const next = state.mode === "playing" ? state.steps[state.cur + 1] : null;
   if (!next) return goal;
-  const scale = unit * cam.zoom;
+  const fitY = (H * (1 - FRAME.top - FRAME.bottom)) / unit / Math.abs(next.y - wisp.groundY);
+  const fitX = (W * (1 - 2 * FRAME.side)) / unit / Math.abs(next.x - wisp.x);
+  goal.zoom = clamp(Math.min(fitY, fitX), ZOOM_MIN, 1);
+  const scale = unit * goal.zoom;
   goal.x += (next.x - wisp.x) * LEAN.x;
   goal.y += (next.y - wisp.groundY) * LEAN.y;
   // Up: the next step no higher than FRAME.top below the top; the wisp no lower than FRAME.bottom.
@@ -413,7 +421,7 @@ function cameraGoal() {
   const reach = (W * (0.5 - FRAME.side)) / scale;
   goal.x = clamp(goal.x, Math.max(next.x, wisp.x) - reach, Math.min(next.x, wisp.x) + reach);
   // Hurry when the next step or the wisp is off the screen right now.
-  const off = (x, y) => Math.abs(x - cam.x) * scale > W / 2 || sy(y) < 0 || sy(y) > H;
+  const off = (x, y) => sx(x) < 0 || sx(x) > W || sy(y) < 0 || sy(y) > H;
   goal.urgent = off(next.x, next.y) || off(wisp.x, wisp.groundY);
   return goal;
 }
@@ -589,7 +597,7 @@ function wrongWay(dir, t) {
 // After the last note: a rolled chord, and the wisp rises into the light.
 function beginOutro(t) {
   state.mode = "outro";
-  state.outro = { start: t, fromY: wisp.groundY };
+  state.outro = { start: t, fromY: wisp.groundY, fromZoom: cam.zoom };
   ui.pause.hidden = true;
   ui.streakPill.hidden = true;
   state.song.ending.forEach((midi, k) => later(k * 0.075, (at) => playPiano(midi, { velocity: 0.38 + k * 0.03, hold: 4.5, at })));
@@ -709,7 +717,7 @@ function update(dt) {
     const u = clamp((t - state.outro.start - 0.4) / 3.2, 0, 1);
     const e = u * u * (3 - 2 * u);
     wisp.y = wisp.groundY = state.outro.fromY + e * 3.2;
-    cam.zoom = lerp(1, 0.8, e);
+    cam.zoom = lerp(state.outro.fromZoom, 0.8, e);
     state.radiance = e;
     if (state.mode === "outro" && t - state.outro.start > 4) finish();
   }
@@ -717,6 +725,7 @@ function update(dt) {
   const rate = goal.urgent ? 7 : 3;
   cam.x += (goal.x - cam.x) * ease(rate, dt);
   cam.y += (goal.y - cam.y) * ease(rate, dt);
+  if (!state.outro) cam.zoom += (goal.zoom - cam.zoom) * ease(rate, dt);
 
   if (t >= state.tintAt) {
     state.tintTarget = state.tintNext;
@@ -1111,7 +1120,7 @@ function drawTouchPads(t) {
 
 function draw() {
   const t = now();
-  const amb = performance.now() / 1000; // the sky keeps drifting, even while paused
+  const amb = clockMs() / 1000; // the sky keeps drifting, even while paused
   S = unit * cam.zoom;
   g.setTransform(pixelRatio, 0, 0, pixelRatio, 0, 0);
   drawSky();
@@ -1518,6 +1527,22 @@ if (location.hostname === "localhost") {
     buildSteps,
     loadSong,
     cameraGoal,
+    // Recording a demo video (tools/record-demo.mjs): the game runs on a clock the recorder steps
+    // one frame at a time, and its sounds are logged, then rendered offline to match.
+    record: {
+      start() {
+        virtualMs = performance.now();
+        startRecording(() => virtualMs / 1000);
+      },
+      advance(seconds) {
+        virtualMs += seconds * 1000;
+        recordingTick();
+        update(seconds);
+        draw();
+      },
+      clock: () => virtualMs / 1000,
+      render: (from, length) => renderRecording(from, length),
+    },
     SONGS,
     // Drives one frame by hand, for when animation frames don't run (a hidden window).
     frame: (dt = 1 / 60) => {
@@ -1546,6 +1571,7 @@ function watchFrameRate(seconds) {
 
 let last = performance.now();
 function frame(time) {
+  if (virtualMs !== null) return requestAnimationFrame(frame); // a recording steps the game itself
   const seconds = (time - last) / 1000;
   last = time;
   watchFrameRate(seconds);

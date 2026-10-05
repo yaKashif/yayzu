@@ -21,6 +21,7 @@ let reverb = null;
 let pianoBus = null;
 let fxBus = null;
 let muted = loadMuted();
+let recording = null; // while making a demo video: every sound the game makes, logged instead of played
 
 function loadMuted() {
   try {
@@ -35,23 +36,7 @@ export function unlockAudio() {
     const AudioCtx = window.AudioContext || window.webkitAudioContext;
     if (!AudioCtx) return;
     ctx = new AudioCtx({ latencyHint: "interactive" });
-    master = ctx.createGain();
-    master.gain.value = muted ? 0 : MASTER_VOLUME;
-    // A gentle limiter: chords ringing into the reverb add up.
-    const limiter = ctx.createDynamicsCompressor();
-    limiter.threshold.value = -12;
-    limiter.knee.value = 10;
-    limiter.ratio.value = 4;
-    limiter.attack.value = 0.005;
-    limiter.release.value = 0.25;
-    master.connect(limiter).connect(ctx.destination);
-    reverb = ctx.createConvolver();
-    reverb.buffer = makeImpulse(3.6, 2.4);
-    const wet = ctx.createGain();
-    wet.gain.value = 0.55;
-    reverb.connect(wet).connect(master);
-    pianoBus = makeBus(0.85, 0.34);
-    fxBus = makeBus(0.5, 0.8);
+    buildMix(muted ? 0 : MASTER_VOLUME);
     for (const sample of samples.values()) decode(sample);
     setInterval(flushScheduled, 25);
   }
@@ -79,6 +64,27 @@ document.addEventListener("visibilitychange", () => {
 
 // ---------- Building blocks ----------
 const freq = (midi) => 440 * Math.pow(2, (midi - 69) / 12);
+
+// The mix on the current context: the piano and effects buses, a shared reverb, and a gentle
+// limiter, since chords ringing into the reverb add up.
+function buildMix(volume) {
+  master = ctx.createGain();
+  master.gain.value = volume;
+  const limiter = ctx.createDynamicsCompressor();
+  limiter.threshold.value = -12;
+  limiter.knee.value = 10;
+  limiter.ratio.value = 4;
+  limiter.attack.value = 0.005;
+  limiter.release.value = 0.25;
+  master.connect(limiter).connect(ctx.destination);
+  reverb = ctx.createConvolver();
+  reverb.buffer = makeImpulse(3.6, 2.4);
+  const wet = ctx.createGain();
+  wet.gain.value = 0.55;
+  reverb.connect(wet).connect(master);
+  pianoBus = makeBus(0.85, 0.34);
+  fxBus = makeBus(0.5, 0.8);
+}
 
 // A bus is a gain that feeds the mix directly and the reverb through a send.
 function makeBus(dryLevel, sendLevel) {
@@ -112,6 +118,10 @@ function makeImpulse(seconds, decay) {
 function tone({ type = "sine", from, to = from, duration, volume, attack = 0.005, at, bus = fxBus }) {
   if (!ctx) return;
   const t = at ?? ctx.currentTime;
+  if (recording) {
+    recording.push(["tone", t, { type, from, to, duration, volume, attack }]);
+    return;
+  }
   const osc = ctx.createOscillator();
   osc.type = type;
   osc.frequency.setValueAtTime(from, t);
@@ -145,7 +155,7 @@ export function loadPiano(notes, onProgress = () => {}) {
       })
       .then((data) => {
         sample.data = data;
-        if (ctx) decode(sample);
+        if (ctx && !recording) decode(sample);
       })
       .catch(() => {
         // Its notes keep the synthesized piano.
@@ -192,6 +202,26 @@ const voices = [];
 export function playPiano(midi, { velocity = 0.7, hold = 1.5, at = 0 } = {}) {
   if (!ctx) return;
   const t = Math.max(at, ctx.currentTime);
+  if (recording) {
+    recording.push(["piano", t, midi, velocity, hold]);
+    return;
+  }
+  const voice = makeVoice(midi, velocity, hold, t);
+  voice.sources[0].onended = () => {
+    const i = voices.indexOf(voice);
+    if (i > -1) voices.splice(i, 1);
+  };
+  voices.push(voice);
+  while (voices.length > MAX_VOICES) {
+    const oldest = voices.shift();
+    oldest.out.gain.setTargetAtTime(0, ctx.currentTime, 0.03);
+    for (const src of oldest.sources) src.stop(ctx.currentTime + 0.2);
+  }
+}
+
+// One piano note's sound: the nearest recording (or the synthesized stand-in) through a filter
+// that makes soft notes darker, as on a real piano.
+function makeVoice(midi, velocity, hold, t) {
   const out = ctx.createGain();
   const level = Math.pow(velocity, 1.3) * 0.95;
   out.gain.setValueAtTime(level, t);
@@ -216,17 +246,7 @@ export function playPiano(midi, { velocity = 0.7, hold = 1.5, at = 0 } = {}) {
     sources = synthPiano(midi, t, end, brightness);
   }
 
-  const voice = { out, sources };
-  sources[0].onended = () => {
-    const i = voices.indexOf(voice);
-    if (i > -1) voices.splice(i, 1);
-  };
-  voices.push(voice);
-  while (voices.length > MAX_VOICES) {
-    const oldest = voices.shift();
-    oldest.out.gain.setTargetAtTime(0, ctx.currentTime, 0.03);
-    for (const src of oldest.sources) src.stop(ctx.currentTime + 0.2);
-  }
+  return { out, sources };
 }
 
 // A soft, bell-like stand-in for the piano: a few sine partials, the higher ones dying faster.
@@ -282,7 +302,7 @@ function flushScheduled() {
 // slow enough not to click: for starting over.
 export function silence() {
   cancelLater();
-  if (!ctx) return;
+  if (!ctx || recording) return;
   const t = ctx.currentTime;
   for (const voice of voices) {
     voice.out.gain.setTargetAtTime(0, t, 0.04);
@@ -316,3 +336,77 @@ export const sfx = {
     [84, 88, 91, 96].forEach((n, i) => tone({ from: freq(n), duration: 0.8, volume: 0.035, attack: 0.003, at: ctx.currentTime + i * 0.07 }));
   },
 };
+
+// ---------- Recording demo videos ----------
+// A demo is made frame by frame on the game's own clock, not in real time, so its sound can't be
+// captured live. Instead startRecording() logs every note and effect with its time, and
+// renderRecording() plays the log back through the same piano, reverb and limiter, offline, into a
+// WAV file. Used by tools/record-demo.mjs; the game itself never calls these.
+export function startRecording(seconds) {
+  recording = [];
+  ctx = {
+    get currentTime() {
+      return seconds();
+    },
+    state: "running",
+    resume: () => Promise.resolve(),
+    suspend: () => Promise.resolve(),
+  };
+}
+
+// Hands scheduled notes over to the log as the recording's clock passes them.
+export const recordingTick = () => flushScheduled();
+
+// Renders the logged sounds from `from` (seconds on the recording's clock) for `length` seconds,
+// as a 16-bit stereo WAV file, base64-encoded.
+export async function renderRecording(from, length) {
+  const sounds = recording;
+  const live = { ctx, master, reverb, pianoBus, fxBus };
+  const rate = 48000;
+  const offline = new OfflineAudioContext(2, Math.ceil(length * rate), rate);
+  recording = null;
+  ctx = offline;
+  buildMix(MASTER_VOLUME);
+  for (const sample of samples.values()) {
+    if (!sample.buffer && sample.data) sample.buffer = await offline.decodeAudioData(sample.data.slice(0));
+  }
+  for (const [kind, at, ...rest] of sounds) {
+    const t = at - from;
+    if (t < 0 || t > length) continue;
+    if (kind === "piano") makeVoice(rest[0], rest[1], rest[2], t);
+    else tone({ ...rest[0], at: t });
+  }
+  const rendered = await offline.startRendering();
+  ({ ctx, master, reverb, pianoBus, fxBus } = live);
+  recording = sounds;
+  return toWav(rendered);
+}
+
+function toWav(buffer) {
+  const channels = [buffer.getChannelData(0), buffer.getChannelData(1)];
+  const frames = buffer.length;
+  const bytes = new DataView(new ArrayBuffer(44 + frames * 4));
+  const text = (offset, s) => [...s].forEach((c, i) => bytes.setUint8(offset + i, c.charCodeAt(0)));
+  text(0, "RIFF");
+  bytes.setUint32(4, 36 + frames * 4, true);
+  text(8, "WAVEfmt ");
+  bytes.setUint32(16, 16, true);
+  bytes.setUint16(20, 1, true); // PCM
+  bytes.setUint16(22, 2, true);
+  bytes.setUint32(24, buffer.sampleRate, true);
+  bytes.setUint32(28, buffer.sampleRate * 4, true);
+  bytes.setUint16(32, 4, true);
+  bytes.setUint16(34, 16, true);
+  text(36, "data");
+  bytes.setUint32(40, frames * 4, true);
+  for (let i = 0; i < frames; i++) {
+    for (let c = 0; c < 2; c++) {
+      const v = Math.max(-1, Math.min(1, channels[c][i]));
+      bytes.setInt16(44 + i * 4 + c * 2, v < 0 ? v * 0x8000 : v * 0x7fff, true);
+    }
+  }
+  let binary = "";
+  const raw = new Uint8Array(bytes.buffer);
+  for (let i = 0; i < raw.length; i += 0x8000) binary += String.fromCharCode(...raw.subarray(i, i + 0x8000));
+  return btoa(binary);
+}
