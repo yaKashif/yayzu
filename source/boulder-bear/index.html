@@ -41,6 +41,14 @@
         height: 100vh;
         height: 100dvh;
       }
+      /* A soft darkening toward the corners, done by the page compositor rather than the GPU's
+         per-pixel budget for the game. */
+      #vignette {
+        position: fixed;
+        inset: 0;
+        pointer-events: none;
+        background: radial-gradient(ellipse 85% 80% at 50% 45%, transparent 55%, rgba(16, 28, 44, 0.32) 100%);
+      }
       [hidden] {
         display: none !important;
       }
@@ -150,6 +158,7 @@
   </head>
   <body>
     <canvas id="game"></canvas>
+    <div id="vignette"></div>
 
     <div id="hud">
       <div id="scores" class="hud-group" hidden>
