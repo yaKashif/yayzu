@@ -199,6 +199,24 @@ function featherSides(ctx, w, h) {
   ctx.fillRect(0, 0, w, h);
 }
 
+// The spark's streak: a soft line of white light, brightest at its head end (on the right) and
+// fading away behind, and soft across, bright in the middle. Drawn once; each frame lays it along
+// the spark's path with a single drawImage.
+const streakSprite = sprite(256, 32, (ctx, w, h) => {
+  const along = ctx.createLinearGradient(0, 0, w, 0);
+  along.addColorStop(0, "rgba(255,255,255,0)");
+  along.addColorStop(1, "rgba(255,255,255,0.95)");
+  ctx.fillStyle = along;
+  ctx.fillRect(0, 0, w, h);
+  ctx.globalCompositeOperation = "destination-in";
+  const across = ctx.createLinearGradient(0, 0, 0, h);
+  [[0, 0], [0.3, 0.12], [0.42, 0.45], [0.5, 1], [0.58, 0.45], [0.7, 0.12], [1, 0]].forEach(([at, a]) =>
+    across.addColorStop(at, `rgba(0,0,0,${a})`)
+  );
+  ctx.fillStyle = across;
+  ctx.fillRect(0, 0, w, h);
+});
+
 // A ray of light from above: a narrow wedge that widens and fades as it falls.
 const raySprite = sprite(64, 512, (ctx, w, h) => {
   const along = ctx.createLinearGradient(0, 0, 0, h);
@@ -1017,44 +1035,35 @@ function drawSparkPath() {
 // The spark itself: a tiny white wisp, a child of the big one, a bead of light trailing a soft
 // streak. It slips into the step as the note comes due and is gone, its streak following it in.
 const STREAK_LENGTH = 0.6; // world units
-const STREAK_PIECES = 8; // each a little fainter toward the end
-// Wide and faint under narrow and bright, for a soft blur of light. Widths are in world units,
-// and never thinner than `least` pixels.
-const STREAK_LAYERS = [
-  { width: 0.11, opacity: 0.1, least: 3 },
-  { width: 0.06, opacity: 0.22, least: 2 },
-  { width: 0.022, opacity: 0.85, least: 1.2 },
-];
+const STREAK_WIDTH = 0.12; // world units, across its soft edges
 const streakFrom = { x: 0, y: 0 };
 const streakTo = { x: 0, y: 0 };
 
 function drawSpark() {
   if (!spark.shown) return;
   const { points, run, length } = spark;
-  const reach = STREAK_LENGTH / length; // the streak's length, as a share of the path
+  // The streak runs from `run - reach` to `run` along the path; only the part out on the path
+  // shows: less of it just as it sets off, and less again as it slips into the step.
+  const reach = STREAK_LENGTH / length;
   const front = Math.min(run, 1);
   const back = Math.max(run - reach, 0);
   if (back < 1 && front > back) {
+    const cropFrom = ((back - run + reach) / reach) * streakSprite.width;
+    const cropTo = ((front - run + reach) / reach) * streakSprite.width;
+    pointAlong(points, back, streakFrom);
+    pointAlong(points, front, streakTo);
+    const x0 = sx(streakFrom.x);
+    const y0 = sy(streakFrom.y);
+    const dx = sx(streakTo.x) - x0;
+    const dy = sy(streakTo.y) - y0;
+    const across = Math.max(3, STREAK_WIDTH * S);
     g.globalCompositeOperation = "source-over";
-    g.lineCap = "butt";
-    g.strokeStyle = "#ffffff";
-    for (let l = 0; l < STREAK_LAYERS.length; l++) {
-      const layer = STREAK_LAYERS[l];
-      g.lineWidth = Math.max(layer.least, layer.width * S);
-      for (let k = 0; k < STREAK_PIECES; k++) {
-        const from = lerp(front, back, k / STREAK_PIECES);
-        const to = lerp(front, back, (k + 1) / STREAK_PIECES);
-        const fade = 1 - (run - (from + to) / 2) / reach; // 1 at the bead, 0 at the streak's end
-        if (fade <= 0) continue;
-        pointAlong(points, from, streakFrom);
-        pointAlong(points, to, streakTo);
-        g.globalAlpha = layer.opacity * fade;
-        g.beginPath();
-        g.moveTo(sx(streakFrom.x), sy(streakFrom.y));
-        g.lineTo(sx(streakTo.x), sy(streakTo.y));
-        g.stroke();
-      }
-    }
+    g.globalAlpha = 1;
+    g.save();
+    g.translate(x0, y0);
+    g.rotate(Math.atan2(dy, dx));
+    g.drawImage(streakSprite, cropFrom, 0, cropTo - cropFrom, streakSprite.height, 0, -across / 2, Math.hypot(dx, dy), across);
+    g.restore();
   }
   if (run >= 1) return; // in the step: just the end of its streak, following it in
   const head = Math.max(2.4, S * 0.04);
