@@ -1,0 +1,630 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <meta
+      name="viewport"
+      content="width=device-width, initial-scale=1, maximum-scale=1, user-scalable=no, viewport-fit=cover"
+    />
+    <meta name="theme-color" content="#5fa6dc" />
+    <title>Naseeb</title>
+    <meta
+      name="description"
+      content="Drive a 1970 Toyota Land Cruiser FJ40 with real physics: its F six, 3-speed and transfer case, four-wheel drive, every tire gripping and slipping."
+    />
+    <link rel="canonical" href="https://yayzu.com/naseeb/" />
+    <link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'%3E%3Ccircle cx='50' cy='50' r='44' fill='%23222'/%3E%3Ccircle cx='50' cy='50' r='26' fill='%23ccd'/%3E%3Ccircle cx='50' cy='50' r='8' fill='%23f2a93b'/%3E%3C/svg%3E" />
+    <style>
+      html,
+      body {
+        margin: 0;
+        height: 100%;
+        overflow: hidden;
+        background: #5fa6dc;
+        font-family: system-ui, -apple-system, "Segoe UI", Roboto, sans-serif;
+        color: #f6f1e8;
+        touch-action: none;
+        overscroll-behavior: none;
+        -webkit-user-select: none;
+        user-select: none;
+        -webkit-tap-highlight-color: transparent;
+      }
+      canvas {
+        position: fixed;
+        inset: 0;
+        display: block;
+        width: 100vw;
+        height: 100vh;
+        height: 100dvh;
+        touch-action: none; /* taps spin the tire, never scroll or zoom */
+      }
+      [hidden] {
+        display: none !important;
+      }
+      button {
+        font: inherit;
+        color: inherit;
+      }
+      .panel {
+        background: rgba(16, 18, 24, 0.68);
+        -webkit-backdrop-filter: blur(8px);
+        backdrop-filter: blur(8px);
+        border-radius: 14px;
+        box-shadow: 0 6px 24px rgba(0, 0, 0, 0.25), inset 0 0 0 1px rgba(255, 255, 255, 0.07);
+      }
+      #hud {
+        position: fixed;
+        z-index: 2;
+        top: max(12px, env(safe-area-inset-top));
+        left: max(12px, env(safe-area-inset-left));
+        right: max(12px, env(safe-area-inset-right));
+        display: flex;
+        gap: 10px;
+        align-items: flex-start;
+        pointer-events: none;
+      }
+      #readout {
+        pointer-events: auto;
+        width: 248px;
+        max-width: calc(100vw - 150px);
+        padding: 10px 14px 12px;
+        font-size: 13px;
+      }
+      #readout header {
+        display: flex;
+        align-items: baseline;
+        justify-content: space-between;
+        margin-bottom: 6px;
+      }
+      #readout h1 {
+        margin: 0;
+        font-size: 17px;
+        font-weight: 800;
+        letter-spacing: 0.04em;
+        color: #ffcf7a;
+      }
+      .fps {
+        margin-left: auto;
+        margin-right: 10px;
+        font-size: 11px;
+        font-weight: 700;
+        font-variant-numeric: tabular-nums;
+        color: #8fe0a8;
+      }
+      .fps.slow {
+        color: #ffb35c;
+      }
+      .fps.bad {
+        color: #ff7a7a;
+      }
+      .tiny {
+        border: 0;
+        background: none;
+        padding: 2px 0;
+        font-size: 12px;
+        font-weight: 600;
+        color: #ffcf7a;
+        cursor: pointer;
+      }
+      dl {
+        display: grid;
+        grid-template-columns: auto 1fr;
+        gap: 3px 12px;
+        margin: 0;
+      }
+      dt {
+        color: rgba(246, 241, 232, 0.62);
+      }
+      dd {
+        margin: 0;
+        text-align: right;
+        font-weight: 650;
+        font-variant-numeric: tabular-nums;
+        white-space: nowrap;
+      }
+      #tach {
+        height: 4px;
+        margin: 6px 0 8px;
+        border-radius: 2px;
+        background: rgba(255, 255, 255, 0.1);
+        overflow: hidden;
+      }
+      #tach i {
+        display: block;
+        height: 100%;
+        width: 0;
+        background: linear-gradient(90deg, #8fe0a8, #ffcf7a);
+      }
+      #tach i.red {
+        background: #ff7a7a;
+      }
+      .pedals {
+        display: flex;
+        flex-direction: column;
+        align-items: flex-end;
+        gap: 8px;
+      }
+      #gears {
+        display: flex;
+        gap: 4px;
+        pointer-events: auto;
+      }
+      .gear {
+        min-width: 30px;
+        height: 30px;
+        padding: 0 7px;
+        border: 0;
+        border-radius: 8px;
+        background: rgba(16, 18, 24, 0.62);
+        -webkit-backdrop-filter: blur(8px);
+        backdrop-filter: blur(8px);
+        box-shadow: inset 0 0 0 1px rgba(255, 255, 255, 0.12);
+        font-size: 13px;
+        font-weight: 750;
+        cursor: pointer;
+      }
+      .gear.engaged {
+        box-shadow: inset 0 0 0 2px #ffcf7a;
+      }
+      .gear.on {
+        background: #ffcf7a;
+        color: #2a2016;
+      }
+      #extra {
+        margin-top: 8px;
+        padding-top: 8px;
+        border-top: 1px solid rgba(255, 255, 255, 0.1);
+      }
+      .state {
+        display: inline-block;
+        margin-left: 6px;
+        padding: 0 7px;
+        border-radius: 999px;
+        font-size: 11px;
+        line-height: 18px;
+        font-weight: 700;
+        background: rgba(255, 255, 255, 0.12);
+      }
+      .state[data-state="rolling"],
+      .state[data-state="gripping"] {
+        background: #2f8f5b;
+      }
+      .state[data-state="wheelspin"] {
+        background: #c2571f;
+      }
+      .state[data-state="skidding"],
+      .state[data-state="sliding"] {
+        background: #b0384a;
+      }
+      .state[data-state="in-the-air"],
+      .state[data-state="on-one-tire"] {
+        background: #4a67b5;
+      }
+      .tools {
+        margin-left: auto;
+        display: flex;
+        flex-wrap: wrap;
+        justify-content: flex-end;
+        gap: 6px;
+        pointer-events: auto;
+      }
+      .tool {
+        border: 0;
+        min-height: 36px;
+        padding: 0 13px;
+        border-radius: 999px;
+        background: rgba(16, 18, 24, 0.62);
+        -webkit-backdrop-filter: blur(8px);
+        backdrop-filter: blur(8px);
+        font-size: 13px;
+        font-weight: 650;
+        cursor: pointer;
+        box-shadow: inset 0 0 0 1px rgba(255, 255, 255, 0.1);
+      }
+      .tool.on {
+        background: #ffcf7a;
+        color: #2a2016;
+      }
+      #settings {
+        position: fixed;
+        z-index: 3;
+        top: calc(max(12px, env(safe-area-inset-top)) + 46px);
+        right: max(12px, env(safe-area-inset-right));
+        width: 300px;
+        max-width: calc(100vw - 24px);
+        max-height: calc(100dvh - 140px);
+        overflow-y: auto;
+        box-sizing: border-box;
+        padding: 14px 16px 16px;
+        font-size: 13px;
+        touch-action: pan-y;
+      }
+      #settings h2 {
+        margin: 0 0 10px;
+        font-size: 15px;
+        display: flex;
+        justify-content: space-between;
+        align-items: center;
+      }
+      #settings label {
+        display: block;
+        margin: 12px 0 2px;
+      }
+      #settings label span {
+        float: right;
+        font-weight: 700;
+        font-variant-numeric: tabular-nums;
+      }
+      #settings input[type="range"] {
+        width: 100%;
+        accent-color: #ffcf7a;
+      }
+      #settings select {
+        width: 100%;
+        margin-top: 4px;
+        padding: 6px 8px;
+        border-radius: 8px;
+        border: 0;
+        background: rgba(255, 255, 255, 0.12);
+        color: inherit;
+        font: inherit;
+      }
+      #settings select option {
+        color: #111;
+      }
+      #settings .note {
+        margin: 2px 0 0;
+        font-size: 11.5px;
+        color: rgba(246, 241, 232, 0.6);
+      }
+      #s-derived {
+        margin-top: 14px;
+        padding-top: 10px;
+        border-top: 1px solid rgba(255, 255, 255, 0.1);
+        font-size: 12px;
+      }
+      #bottom {
+        position: fixed;
+        z-index: 2;
+        left: 0;
+        right: 0;
+        bottom: max(10px, env(safe-area-inset-bottom));
+        display: flex;
+        flex-direction: column;
+        align-items: center;
+        gap: 8px;
+        pointer-events: none;
+      }
+      #pads {
+        width: 100%;
+        box-sizing: border-box;
+        display: flex;
+        align-items: flex-end;
+        justify-content: space-between;
+        gap: 10px;
+        padding: 0 max(12px, env(safe-area-inset-left));
+      }
+      .pad {
+        display: flex;
+        gap: 8px;
+        pointer-events: auto;
+      }
+      .pad-btn {
+        width: 64px;
+        height: 64px;
+        border: 0;
+        border-radius: 18px;
+        background: rgba(16, 18, 24, 0.62);
+        -webkit-backdrop-filter: blur(8px);
+        backdrop-filter: blur(8px);
+        box-shadow: inset 0 0 0 1px rgba(255, 255, 255, 0.14);
+        font-size: 24px;
+        cursor: pointer;
+        touch-action: none;
+        -webkit-touch-callout: none;
+      }
+      .pad-btn.go {
+        background: rgba(242, 154, 59, 0.75);
+        color: #2a1a08;
+      }
+      .pad-btn.held {
+        background: #ffcf7a;
+        color: #2a2016;
+        transform: scale(0.95);
+      }
+      #hint {
+        margin: 0 12px;
+        align-self: center;
+        padding: 7px 14px;
+        border-radius: 999px;
+        background: rgba(16, 18, 24, 0.55);
+        font-size: 13px;
+        text-align: center;
+        transition: opacity 0.6s;
+      }
+      #hint.gone {
+        opacity: 0;
+      }
+      #surfaces {
+        display: flex;
+        gap: 6px;
+        max-width: 100%;
+        padding: 2px 12px;
+        box-sizing: border-box;
+        overflow-x: auto;
+        scrollbar-width: none;
+        pointer-events: auto;
+        touch-action: pan-x;
+      }
+      #surfaces::-webkit-scrollbar {
+        display: none;
+      }
+      .surface {
+        flex-shrink: 0;
+        display: flex;
+        align-items: center;
+        gap: 7px;
+        border: 0;
+        min-height: 34px;
+        padding: 0 12px 0 8px;
+        border-radius: 999px;
+        background: rgba(16, 18, 24, 0.62);
+        font-size: 12.5px;
+        font-weight: 600;
+        cursor: pointer;
+        box-shadow: inset 0 0 0 1px rgba(255, 255, 255, 0.1);
+      }
+      .surface i {
+        width: 16px;
+        height: 16px;
+        border-radius: 50%;
+        box-shadow: inset 0 0 0 1px rgba(255, 255, 255, 0.35);
+      }
+      .surface.current {
+        box-shadow: inset 0 0 0 2px #ffcf7a;
+      }
+      #overlay {
+        position: fixed;
+        z-index: 4;
+        inset: 0;
+        display: grid;
+        place-items: center;
+        padding: 16px;
+        background: rgba(20, 24, 34, 0.35);
+      }
+      .card {
+        width: min(420px, 100%);
+        box-sizing: border-box;
+        padding: 26px 24px 22px;
+        text-align: center;
+      }
+      .card h2 {
+        margin: 0 0 10px;
+        font-size: clamp(32px, 9vw, 44px);
+        font-weight: 800;
+        letter-spacing: 0.05em;
+        color: #ffcf7a;
+      }
+      .card p {
+        margin: 0 0 16px;
+        line-height: 1.5;
+        font-size: 15px;
+      }
+      #start {
+        width: 100%;
+        max-width: 240px;
+        min-height: 52px;
+        border: 0;
+        border-radius: 999px;
+        background: linear-gradient(135deg, #ffd27f, #f29a3b);
+        color: #2a1a08;
+        font-size: 19px;
+        font-weight: 800;
+        cursor: pointer;
+        box-shadow: 0 4px 0 #b9681c, 0 10px 24px rgba(242, 154, 59, 0.35);
+      }
+      #start:active {
+        transform: translateY(2px);
+        box-shadow: 0 2px 0 #b9681c;
+      }
+      #controls {
+        margin: 14px 0 0;
+        font-size: 13px;
+        color: rgba(246, 241, 232, 0.65);
+      }
+      .more-games {
+        display: inline-block;
+        margin-top: 12px;
+        color: #ffcf7a;
+        font-weight: 600;
+        text-decoration: none;
+      }
+      #labels {
+        position: fixed;
+        inset: 0;
+        z-index: 1;
+        pointer-events: none;
+        overflow: hidden;
+      }
+      .force-label {
+        position: absolute;
+        left: 0;
+        top: 0;
+        font-size: 12px;
+        font-weight: 750;
+        white-space: nowrap;
+        text-shadow: 0 0 3px rgba(0, 0, 0, 0.9), 0 1px 2px rgba(0, 0, 0, 0.8);
+      }
+      .ripple {
+        position: fixed;
+        z-index: 1;
+        width: 56px;
+        height: 56px;
+        margin: -28px 0 0 -28px;
+        border-radius: 50%;
+        border: 2px solid rgba(255, 255, 255, 0.7);
+        display: grid;
+        place-items: center;
+        color: #fff;
+        font-size: 22px;
+        font-weight: 800;
+        pointer-events: none;
+        animation: ripple 0.45s ease-out forwards;
+      }
+      @keyframes ripple {
+        from { transform: scale(0.5); opacity: 1; }
+        to { transform: scale(1.4); opacity: 0; }
+      }
+      @media (max-width: 640px) {
+        .gear {
+          min-width: 26px;
+          height: 28px;
+          padding: 0 5px;
+          font-size: 12px;
+        }
+        .pad-btn {
+          width: 58px;
+          height: 58px;
+        }
+        #hint {
+          display: none;
+        }
+        #readout {
+          width: 200px;
+          padding: 8px 12px 10px;
+          font-size: 12px;
+        }
+        .tool {
+          min-height: 32px;
+          padding: 0 10px;
+          font-size: 12px;
+        }
+      }
+    </style>
+  </head>
+  <body>
+    <canvas id="game"></canvas>
+
+    <div id="hud">
+      <section id="readout" class="panel" aria-live="off">
+        <header>
+          <h1>Naseeb</h1>
+          <span id="fps" class="fps">– fps</span>
+          <button id="more" class="tiny">Less</button>
+        </header>
+        <dl>
+          <dt>Speed</dt>
+          <dd id="r-speed">0 km/h</dd>
+          <dt>Gear</dt>
+          <dd id="r-gear">Auto 1</dd>
+          <dt>Engine</dt>
+          <dd id="r-rpm">650 rpm</dd>
+        </dl>
+        <div id="tach"><i id="tach-bar"></i></div>
+        <dl>
+          <dt>Steering</dt>
+          <dd id="r-steer">straight</dd>
+          <dt>Slip, front · rear</dt>
+          <dd><span id="r-slip">0%</span><span id="r-state" class="state">At rest</span></dd>
+          <dt>Heading</dt>
+          <dd id="r-heading">straight</dd>
+          <dt>Car moved</dt>
+          <dd id="r-moved">0 m</dd>
+        </dl>
+        <dl id="extra">
+          <dt>Surface</dt>
+          <dd id="r-surface">Dry asphalt</dd>
+          <dt>Weight</dt>
+          <dd id="r-weight">–</dd>
+          <dt>Ground, front L · R</dt>
+          <dd id="r-normal-front">–</dd>
+          <dt>Ground, rear L · R</dt>
+          <dd id="r-normal-rear">–</dd>
+          <dt>Friction, front L · R</dt>
+          <dd id="r-friction-front">–</dd>
+          <dt>Friction, rear L · R</dt>
+          <dd id="r-friction-rear">–</dd>
+          <dt>Rolling resist.</dt>
+          <dd id="r-rolling">–</dd>
+          <dt>Air drag</dt>
+          <dd id="r-drag">–</dd>
+          <dt>At the wheels</dt>
+          <dd id="r-torque">–</dd>
+        </dl>
+      </section>
+      <div class="tools">
+        <button id="t-forces" class="tool on" aria-pressed="true">Forces</button>
+        <button id="t-slow" class="tool" aria-pressed="false">Slow-mo</button>
+        <button id="t-view" class="tool">View: Behind</button>
+        <button id="t-drop" class="tool">Drop</button>
+        <button id="t-settings" class="tool" aria-label="Settings">⚙</button>
+      </div>
+    </div>
+
+    <section id="settings" class="panel" hidden>
+      <h2>FJ40 and world <button id="s-close" class="tiny">Close</button></h2>
+      <label for="s-drive">Drive</label>
+      <select id="s-drive">
+        <option value="4x4">4×4: front and rear locked together</option>
+        <option value="rear">Rear only (2H)</option>
+      </select>
+      <label for="s-lockers">Differential locks</label>
+      <select id="s-lockers">
+        <option value="none">None: both open, as it came</option>
+        <option value="rear">Rear locked</option>
+        <option value="both">Front and rear locked</option>
+      </select>
+      <p class="note">An open differential lets its tires turn at different speeds round a corner, but a tire on ice gets all the spin. Locked, they turn together.</p>
+      <label for="s-pressure">Tire pressure <span id="s-pressure-out"></span></label>
+      <input id="s-pressure" type="range" min="0.8" max="3.5" step="0.1" />
+      <p class="note">Lower squashes the tires more: a bigger contact patch, more rolling resistance.</p>
+      <label for="s-weight">Weight, each tire and wheel <span id="s-weight-out"></span></label>
+      <input id="s-weight" type="range" min="10" max="60" step="0.5" />
+      <p class="note">Heavier tires take more to spin up and to stop.</p>
+      <label for="s-world">Gravity</label>
+      <select id="s-world">
+        <option value="earth">Earth, 9.81 m/s²</option>
+        <option value="mars">Mars, 3.71 m/s²</option>
+        <option value="moon">Moon, 1.62 m/s² (no air)</option>
+        <option value="jupiter">Jupiter, 24.79 m/s²</option>
+      </select>
+      <dl id="s-derived"></dl>
+      <button id="s-defaults" class="tiny" style="margin-top: 12px">Back to defaults</button>
+    </section>
+
+    <div id="labels"></div>
+
+    <div id="bottom">
+      <div id="pads">
+        <div class="pad">
+          <button id="c-left" class="pad-btn" aria-label="Steer left">◀</button>
+          <button id="c-right" class="pad-btn" aria-label="Steer right">▶</button>
+        </div>
+        <p id="hint">▲ throttle, ▼ or Space to brake, ◀ ▶ to steer. Gears 1–6, 0 for automatic, R reverse. Drag to look around.</p>
+        <div class="pedals">
+          <div id="gears" aria-label="Gears"></div>
+          <div class="pad">
+            <button id="c-brake" class="pad-btn" aria-label="Brake">▼</button>
+            <button id="c-go" class="pad-btn go" aria-label="Throttle">▲</button>
+          </div>
+        </div>
+      </div>
+      <nav id="surfaces" aria-label="Go to a surface"></nav>
+    </div>
+
+    <div id="overlay">
+      <div class="card panel">
+        <h2>Naseeb</h2>
+        <p>
+          A 1970 Toyota Land Cruiser FJ40, built up from its tires: the ladder frame, the 3.9-litre F
+          six, the gearbox and transfer case, both axles driven. Drive it across asphalt, grass, sand,
+          mud, snow and ice, and watch every tire grip and slip. (Its body comes later.)
+        </p>
+        <button id="start">Start</button>
+        <a class="more-games" href="../../" target="_top">More games on Yayzu</a>
+        <p id="controls">▲ throttle, ▼ or Space brakes, ◀ ▶ steer (or arrows / WASD). Gears 1–6, 0 automatic, R reverse, N neutral. Backspace drops it, V view, F forces, M slow-mo.</p>
+      </div>
+    </div>
+    <script type="module" src="./game.js"></script>
+  </body>
+</html>

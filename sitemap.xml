@@ -2,10 +2,11 @@
 <urlset xmlns="http://www.sitemaps.org/schemas/sitemap/0.9" xmlns:image="http://www.google.com/schemas/sitemap-image/1.1">
   <url>
     <loc>https://yayzu.com/</loc>
-    <lastmod>2026-10-02</lastmod>
+    <lastmod>2026-10-08</lastmod>
     <image:image><image:loc>https://yayzu.com/games/boulder-bear/thumbnail.jpg</image:loc></image:image>
     <image:image><image:loc>https://yayzu.com/games/fruit-slash/thumbnail.jpg</image:loc></image:image>
     <image:image><image:loc>https://yayzu.com/games/wiz-o-wisp/thumbnail.jpg</image:loc></image:image>
+    <image:image><image:loc>https://yayzu.com/games/naseeb/thumbnail.jpg</image:loc></image:image>
   </url>
   <url>
     <loc>https://yayzu.com/boulder-bear/</loc>
@@ -14,12 +15,17 @@
   </url>
   <url>
     <loc>https://yayzu.com/fruit-slash/</loc>
-    <lastmod>2026-10-02</lastmod>
+    <lastmod>2026-10-08</lastmod>
     <image:image><image:loc>https://yayzu.com/games/fruit-slash/thumbnail.jpg</image:loc></image:image>
   </url>
   <url>
     <loc>https://yayzu.com/wiz-o-wisp/</loc>
-    <lastmod>2026-10-02</lastmod>
+    <lastmod>2026-10-08</lastmod>
     <image:image><image:loc>https://yayzu.com/games/wiz-o-wisp/thumbnail.jpg</image:loc></image:image>
+  </url>
+  <url>
+    <loc>https://yayzu.com/naseeb/</loc>
+    <lastmod>2026-10-08</lastmod>
+    <image:image><image:loc>https://yayzu.com/games/naseeb/thumbnail.jpg</image:loc></image:image>
   </url>
 </urlset>

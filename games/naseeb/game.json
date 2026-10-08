@@ -1,0 +1,150 @@
+{
+  "slug": "naseeb",
+  "title": "Naseeb",
+  "shortDescription": "Drive a 1970 Land Cruiser FJ40 with real physics: every tire grips, slips and spins.",
+  "description": "A driving physics sandbox built up from the tires. A 1970 Toyota Land Cruiser FJ40 rolling chassis, modelled on its published specs: the 3.9-litre F six, the 3-speed gearbox and two-speed transfer case, part-time four-wheel drive with open differentials, drum brakes and H78-15 tires. Every tire grips, slips and spins by a real tire model, weight shifts as you accelerate, brake and turn, and nine surfaces from dry asphalt to sand, mud, snow and ice each grip differently. Force arrows show the weight, the ground pushing back and the friction at every tire.",
+  "genres": [
+    "Simulation",
+    "Driving",
+    "Sandbox"
+  ],
+  "tags": [
+    "physics",
+    "driving",
+    "4x4",
+    "off-road",
+    "land cruiser",
+    "3d",
+    "mobile"
+  ],
+  "howToPlay": [
+    "Hold the throttle to drive; the automatic picks the gear.",
+    "Press 1 to 6 to choose a gear yourself, 0 to hand back to the automatic, R for reverse.",
+    "Brake with Space or the brake pedal.",
+    "Steer with the arrow keys or the on-screen buttons.",
+    "Jump to a surface with the chips at the bottom and see how the grip changes.",
+    "Turn on Forces to see the weight, the ground pushing back and the friction at each tire."
+  ],
+  "controls": {
+    "keyboard": [
+      {
+        "action": "Throttle",
+        "keys": [
+          "ArrowUp",
+          "W"
+        ]
+      },
+      {
+        "action": "Brake",
+        "keys": [
+          "Space",
+          "ArrowDown",
+          "S"
+        ]
+      },
+      {
+        "action": "Steer",
+        "keys": [
+          "ArrowLeft",
+          "ArrowRight",
+          "A",
+          "D"
+        ]
+      },
+      {
+        "action": "Choose a gear",
+        "keys": [
+          "1",
+          "2",
+          "3",
+          "4",
+          "5",
+          "6"
+        ]
+      },
+      {
+        "action": "Automatic",
+        "keys": [
+          "0"
+        ]
+      },
+      {
+        "action": "Reverse",
+        "keys": [
+          "R"
+        ]
+      },
+      {
+        "action": "Neutral",
+        "keys": [
+          "N"
+        ]
+      },
+      {
+        "action": "Drop the car",
+        "keys": [
+          "Backspace"
+        ]
+      },
+      {
+        "action": "Change view",
+        "keys": [
+          "V"
+        ]
+      },
+      {
+        "action": "Show forces",
+        "keys": [
+          "F"
+        ]
+      },
+      {
+        "action": "Slow motion",
+        "keys": [
+          "M"
+        ]
+      }
+    ],
+    "touch": [
+      {
+        "action": "Throttle",
+        "gesture": "Hold the ▲ pedal"
+      },
+      {
+        "action": "Brake",
+        "gesture": "Hold the ▼ pedal"
+      },
+      {
+        "action": "Steer",
+        "gesture": "Hold ◀ or ▶"
+      },
+      {
+        "action": "Choose a gear",
+        "gesture": "Tap a gear above the pedals"
+      },
+      {
+        "action": "Look around",
+        "gesture": "Drag the scene; pinch to zoom"
+      }
+    ]
+  },
+  "orientation": "any",
+  "platforms": [
+    "desktop",
+    "mobile"
+  ],
+  "entry": "index.html",
+  "thumbnail": "thumbnail.jpg",
+  "engine": "three.js",
+  "author": {
+    "name": "Yayzu",
+    "url": "https://yayzu.com"
+  },
+  "version": "0.1.0",
+  "released": "2026-10-08",
+  "sizeKB": {
+    "total": 624,
+    "initialGzip": 165
+  },
+  "contentRating": "everyone"
+}
