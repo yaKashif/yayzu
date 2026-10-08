@@ -424,19 +424,27 @@ function pathFrom(a, b) {
     const f = (want - along[k - 1]) / (along[k] - along[k - 1] || 1);
     points.push({ x: lerp(raw[k - 1].x, raw[k].x, f), y: lerp(raw[k - 1].y, raw[k].y, f) });
   }
+  points.distance = total;
   return (a.path = points);
 }
 
-// Where along the path, `q` (0 to 1) of the way by distance.
-function pointAlong(points, q) {
+// Where along the path, `q` (0 to 1) of the way by distance, written into `out`.
+function pointAlong(points, q, out) {
   const at = clamp(q, 0, 1) * PATH_POINTS;
   const k = Math.min(Math.floor(at), PATH_POINTS - 1);
-  return { x: lerp(points[k].x, points[k + 1].x, at - k), y: lerp(points[k].y, points[k + 1].y, at - k) };
+  out.x = lerp(points[k].x, points[k + 1].x, at - k);
+  out.y = lerp(points[k].y, points[k + 1].y, at - k);
+  return out;
 }
 
-// The spark's run at time `t`: its path, and how far along it is (0 to 1).
-function sparkAt(t) {
-  if (state.mode !== "playing" || state.cur < 0) return null;
+// The spark's run, brought up to date once a frame and kept in this one object, so following and
+// drawing it make no garbage. `run` goes from 0 as it sets off to 1 as it reaches the step, and on
+// past 1 while it waits there; `q` stops at 1. It's `shown` only while a step is on its way.
+const spark = { shown: false, points: null, length: 1, seconds: 1, run: 0, q: 0, x: 0, y: 0 };
+
+function updateSpark(t) {
+  spark.shown = false;
+  if (state.mode !== "playing" || state.cur < 0) return;
   let i = state.cur;
   let start = state.lastHit;
   let end = expectedNext();
@@ -448,10 +456,14 @@ function sparkAt(t) {
     start = state.prevHit;
   }
   const b = state.steps[i + 1];
-  if (!b) return null;
-  const points = pathFrom(state.steps[i], b);
-  const q = clamp((t - start) / Math.max(0.05, end - start), 0, 1);
-  return { points, q, seconds: end - start, ...pointAlong(points, q) };
+  if (!b) return;
+  spark.points = pathFrom(state.steps[i], b);
+  spark.length = spark.points.distance;
+  spark.seconds = Math.max(0.05, end - start);
+  spark.run = (t - start) / spark.seconds;
+  spark.q = clamp(spark.run, 0, 1);
+  pointAlong(spark.points, spark.q, spark);
+  spark.shown = true;
 }
 
 // ---------- The camera ----------
@@ -465,26 +477,36 @@ const LEAN = { x: 0.5, y: 0.35 }; // how far toward the next step the camera lea
 const FRAME = { top: 0.22, bottom: 0.14, side: 0.12 }; // edges of the screen kept clear, as fractions of it
 const RATE = { calm: 3, urgent: 7, ride: 6 }; // how quickly the camera closes on where it's going
 
+// Where the camera is headed this frame: one object, reused.
+const goal = { x: 0, y: 0, rate: RATE.calm };
+const ahead = { x: 0, y: 0 };
+const offScreen = (x, y) => sx(x) < 0 || sx(x) > W || sy(y) < 0 || sy(y) > H;
+
 function cameraGoal() {
   const next = state.mode === "playing" ? state.steps[state.cur + 1] : null;
-  if (!next) return { x: wisp.x, y: wisp.groundY, rate: RATE.calm };
-  const at = state.cur < 0 ? { x: wisp.x, y: wisp.groundY } : state.steps[state.cur];
-  const goal = { x: at.x + (next.x - at.x) * LEAN.x, y: at.y + (next.y - at.y) * LEAN.y, rate: RATE.calm };
+  goal.rate = RATE.calm;
+  if (!next) {
+    goal.x = wisp.x;
+    goal.y = wisp.groundY;
+    return goal;
+  }
+  const atX = state.cur < 0 ? wisp.x : state.steps[state.cur].x;
+  const atY = state.cur < 0 ? wisp.groundY : state.steps[state.cur].y;
+  goal.x = atX + (next.x - atX) * LEAN.x;
+  goal.y = atY + (next.y - atY) * LEAN.y;
   // Up: the next step no higher than FRAME.top below the top; the wisp no lower than FRAME.bottom.
   const nextOnScreen = next.y - (H * (ANCHOR - FRAME.top)) / unit;
-  const wispOnScreen = at.y + (H * (1 - ANCHOR - FRAME.bottom)) / unit;
+  const wispOnScreen = atY + (H * (1 - ANCHOR - FRAME.bottom)) / unit;
   goal.y = Math.min(Math.max(goal.y, nextOnScreen), wispOnScreen);
   // Across: both within FRAME.side of the sides.
   const reach = (W * (0.5 - FRAME.side)) / unit;
-  goal.x = clamp(goal.x, Math.max(next.x, at.x) - reach, Math.min(next.x, at.x) + reach);
+  goal.x = clamp(goal.x, Math.max(next.x, atX) - reach, Math.min(next.x, atX) + reach);
   // Hurry when the next step or the wisp is off the screen right now.
-  const off = (x, y) => sx(x) < 0 || sx(x) > W || sy(y) < 0 || sy(y) > H;
-  if (off(next.x, next.y) || off(at.x, at.y)) goal.rate = RATE.urgent;
+  if (offScreen(next.x, next.y) || offScreen(atX, atY)) goal.rate = RATE.urgent;
   // Too far apart to show both: once the spark climbs past mid-screen, ride along with it. The
   // camera lags anything moving, so it aims ahead by the spark's speed to keep it right in the middle.
-  const spark = nextOnScreen > wispOnScreen && sparkAt(now());
-  if (spark) {
-    const ahead = pointAlong(spark.points, spark.q + 0.01);
+  if (nextOnScreen > wispOnScreen && spark.shown) {
+    pointAlong(spark.points, spark.q + 0.01, ahead);
     const climb = spark.q < 1 ? (ahead.y - spark.y) / (0.01 * spark.seconds) : 0;
     goal.y = Math.max(goal.y, spark.y - (H * (ANCHOR - 0.5)) / unit + climb / RATE.ride);
     goal.rate = RATE.ride;
@@ -788,6 +810,7 @@ function update(dt) {
     state.radiance = e;
     if (state.mode === "outro" && t - state.outro.start > 4) finish();
   }
+  updateSpark(t);
   const goal = cameraGoal();
   cam.x += (goal.x - cam.x) * ease(goal.rate, dt);
   cam.y += (goal.y - cam.y) * ease(goal.rate, dt);
@@ -976,9 +999,8 @@ function drawApproach(s, t) {
 }
 
 // The way the spark still has to go: a fine thread of light.
-function drawSparkPath(t) {
-  const spark = sparkAt(t);
-  if (!spark || spark.q >= 1) return;
+function drawSparkPath() {
+  if (!spark.shown || spark.q >= 1) return;
   const { points, q } = spark;
   g.globalCompositeOperation = "source-over";
   g.lineCap = "round";
@@ -992,53 +1014,59 @@ function drawSparkPath(t) {
   g.stroke();
 }
 
-// The spark itself: a tiny wisp, a child of the big one, a bead of light swimming ahead with a
-// wavy tail, and swelling gently on the step once it's there and the note is due.
-function drawSpark(t) {
-  const spark = sparkAt(t);
-  if (!spark) return;
-  const { points, q } = spark;
-  const total = Math.hypot(points[1].x - points[0].x, points[1].y - points[0].y) * PATH_POINTS;
-  const head = Math.max(3.5, S * 0.06) * (q >= 1 ? 1 + 0.12 * Math.sin(t * 8) : 1);
-  const tail = 0.6; // world units
-  // The tail's two edges, narrowing to a point, swaying in a wave that runs down it.
-  const left = [];
-  const right = [];
-  for (let k = 0; k <= 14; k++) {
-    const f = k / 14;
-    const p = pointAlong(points, q - (f * tail) / total);
-    const back = pointAlong(points, q - (f * tail + 0.03) / total);
-    let nx = back.y - p.y;
-    let ny = p.x - back.x;
-    const n = Math.hypot(nx, ny) || 1;
-    nx /= n;
-    ny /= n;
-    const wave = Math.sin(t * 10 - f * 6) * 0.07 * f;
-    const half = (head / S) * 0.8 * (1 - f);
-    left.push([sx(p.x + nx * (wave + half)), sy(p.y + ny * (wave + half))]);
-    right.push([sx(p.x + nx * (wave - half)), sy(p.y + ny * (wave - half))]);
+// The spark itself: a tiny white wisp, a child of the big one, a bead of light trailing a soft
+// streak. It slips into the step as the note comes due and is gone, its streak following it in.
+const STREAK_LENGTH = 0.6; // world units
+const STREAK_PIECES = 8; // each a little fainter toward the end
+// Wide and faint under narrow and bright, for a soft blur of light. Widths are in world units,
+// and never thinner than `least` pixels.
+const STREAK_LAYERS = [
+  { width: 0.11, opacity: 0.1, least: 3 },
+  { width: 0.06, opacity: 0.22, least: 2 },
+  { width: 0.022, opacity: 0.85, least: 1.2 },
+];
+const streakFrom = { x: 0, y: 0 };
+const streakTo = { x: 0, y: 0 };
+
+function drawSpark() {
+  if (!spark.shown) return;
+  const { points, run, length } = spark;
+  const reach = STREAK_LENGTH / length; // the streak's length, as a share of the path
+  const front = Math.min(run, 1);
+  const back = Math.max(run - reach, 0);
+  if (back < 1 && front > back) {
+    g.globalCompositeOperation = "source-over";
+    g.lineCap = "butt";
+    g.strokeStyle = "#ffffff";
+    for (let l = 0; l < STREAK_LAYERS.length; l++) {
+      const layer = STREAK_LAYERS[l];
+      g.lineWidth = Math.max(layer.least, layer.width * S);
+      for (let k = 0; k < STREAK_PIECES; k++) {
+        const from = lerp(front, back, k / STREAK_PIECES);
+        const to = lerp(front, back, (k + 1) / STREAK_PIECES);
+        const fade = 1 - (run - (from + to) / 2) / reach; // 1 at the bead, 0 at the streak's end
+        if (fade <= 0) continue;
+        pointAlong(points, from, streakFrom);
+        pointAlong(points, to, streakTo);
+        g.globalAlpha = layer.opacity * fade;
+        g.beginPath();
+        g.moveTo(sx(streakFrom.x), sy(streakFrom.y));
+        g.lineTo(sx(streakTo.x), sy(streakTo.y));
+        g.stroke();
+      }
+    }
   }
+  if (run >= 1) return; // in the step: just the end of its streak, following it in
+  const head = Math.max(2.4, S * 0.04);
   const x = sx(spark.x);
   const y = sy(spark.y);
   g.globalCompositeOperation = "lighter";
-  drawGlow(glow(40, 100, 74), x, y, head * 6, 0.7);
+  drawGlow(glow(0, 0, 100), x, y, head * 7, 0.6);
   g.globalCompositeOperation = "source-over";
-  g.globalAlpha = 0.8;
-  g.fillStyle = "hsl(40,100%,82%)";
-  g.beginPath();
-  g.moveTo(...left[0]);
-  for (const p of left) g.lineTo(...p);
-  for (const p of right.reverse()) g.lineTo(...p);
-  g.closePath();
-  g.fill();
   g.globalAlpha = 1;
-  g.fillStyle = "hsl(42,100%,84%)";
+  g.fillStyle = "#ffffff";
   g.beginPath();
   g.arc(x, y, head, 0, Math.PI * 2);
-  g.fill();
-  g.fillStyle = "#fffef8";
-  g.beginPath();
-  g.arc(x, y, head * 0.55, 0, Math.PI * 2);
   g.fill();
 }
 
@@ -1264,9 +1292,9 @@ function draw() {
   drawSteps(t);
   drawEffects(t);
   drawParticles();
-  drawSparkPath(t);
+  drawSparkPath();
   drawWisp(t);
-  drawSpark(t);
+  drawSpark();
   drawHint(t);
   drawClouds(true, amb);
   drawTexts(t);
@@ -1662,7 +1690,7 @@ if (location.hostname === "localhost") {
     buildSteps,
     loadSong,
     cameraGoal,
-    sparkAt,
+    spark,
     // Recording a demo video (tools/record-demo.mjs): the game runs on a clock the recorder steps
     // one frame at a time, and its sounds are logged, then rendered offline to match.
     record: {
