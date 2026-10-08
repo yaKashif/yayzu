@@ -945,7 +945,7 @@ function drawPlatform(s, t, lit, isNext) {
 }
 
 // A ring closing in on the next step at an even pace, meeting its edge when the note is due, just
-// as the spark gets there. A soft dark edge keeps it readable against the bright sky.
+// as the spark gets there.
 function drawApproach(s, t) {
   const x = sx(s.x);
   const y = sy(s.y);
@@ -959,83 +959,86 @@ function drawApproach(s, t) {
     const due = expectedNext();
     if (t > due) {
       k = 1.08 + 0.06 * Math.sin((t - due) * 5);
-      alpha = 0.75 + 0.2 * Math.sin((t - due) * 5);
+      alpha = 0.65 + 0.2 * Math.sin((t - due) * 5);
     } else {
       const q = clamp((t - state.lastHit) / Math.max(0.05, due - state.lastHit), 0, 1);
       k = 1.08 + 1.5 * (1 - q);
-      alpha = 0.35 + 0.6 * q;
+      alpha = 0.15 + 0.7 * q;
     }
   }
-  g.globalCompositeOperation = "source-over";
+  g.globalCompositeOperation = "lighter";
+  g.globalAlpha = alpha;
+  g.strokeStyle = `hsl(${s.hue},100%,86%)`;
+  g.lineWidth = Math.max(1.5, w * 0.035);
   g.beginPath();
   g.ellipse(x, y, (w / 2) * k, w * 0.15 * k, 0, 0, Math.PI * 2);
-  g.globalAlpha = alpha * 0.3;
-  g.strokeStyle = `hsl(${s.hue},65%,36%)`;
-  g.lineWidth = Math.max(3.5, w * 0.09);
-  g.stroke();
-  g.globalAlpha = alpha;
-  g.strokeStyle = `hsl(${s.hue},100%,92%)`;
-  g.lineWidth = Math.max(1.5, w * 0.035);
   g.stroke();
 }
 
-// The way the spark still has to go, dotted. The dots stay put as it passes over them.
+// The way the spark still has to go: a fine thread of light.
 function drawSparkPath(t) {
   const spark = sparkAt(t);
   if (!spark || spark.q >= 1) return;
   const { points, q } = spark;
-  const length = Math.hypot(points[1].x - points[0].x, points[1].y - points[0].y) * PATH_POINTS * S;
-  const gap = Math.max(7, S * 0.16);
   g.globalCompositeOperation = "source-over";
   g.lineCap = "round";
   g.lineJoin = "round";
-  g.setLineDash([0, gap]);
-  g.lineDashOffset = (q * length) % gap;
   g.beginPath();
   g.moveTo(sx(spark.x), sy(spark.y));
   for (let k = Math.ceil(q * PATH_POINTS); k <= PATH_POINTS; k++) g.lineTo(sx(points[k].x), sy(points[k].y));
-  g.globalAlpha = 0.22;
-  g.strokeStyle = "rgb(120,40,80)";
-  g.lineWidth = Math.max(4, S * 0.07);
+  g.globalAlpha = 0.5;
+  g.strokeStyle = "#fff6ea";
+  g.lineWidth = 1;
   g.stroke();
-  g.globalAlpha = 0.85;
-  g.strokeStyle = "#fff7e8";
-  g.lineWidth = Math.max(2.5, S * 0.045);
-  g.stroke();
-  g.setLineDash([]);
-  g.lineDashOffset = 0;
 }
 
-// The spark itself: a bead of gold light with a short tail, a darker rim so it shows on white,
-// pulsing on the step once it's there and the note is due.
+// The spark itself: a tiny wisp, a child of the big one, a bead of light swimming ahead with a
+// wavy tail, and swelling gently on the step once it's there and the note is due.
 function drawSpark(t) {
   const spark = sparkAt(t);
   if (!spark) return;
   const { points, q } = spark;
-  const length = Math.hypot(points[1].x - points[0].x, points[1].y - points[0].y) * PATH_POINTS;
-  const r = Math.max(5, S * 0.085) * (q >= 1 ? 1 + 0.18 * Math.sin(t * 10) : 1);
-  g.globalCompositeOperation = "lighter";
-  for (let k = 4; k >= 1; k--) {
-    const p = pointAlong(points, q - (k * 0.09) / length);
-    drawGlow(glow(42, 100, 78), sx(p.x), sy(p.y), r * (4.5 - k * 0.6), 0.35 * (1 - k / 5));
+  const total = Math.hypot(points[1].x - points[0].x, points[1].y - points[0].y) * PATH_POINTS;
+  const head = Math.max(3.5, S * 0.06) * (q >= 1 ? 1 + 0.12 * Math.sin(t * 8) : 1);
+  const tail = 0.6; // world units
+  // The tail's two edges, narrowing to a point, swaying in a wave that runs down it.
+  const left = [];
+  const right = [];
+  for (let k = 0; k <= 14; k++) {
+    const f = k / 14;
+    const p = pointAlong(points, q - (f * tail) / total);
+    const back = pointAlong(points, q - (f * tail + 0.03) / total);
+    let nx = back.y - p.y;
+    let ny = p.x - back.x;
+    const n = Math.hypot(nx, ny) || 1;
+    nx /= n;
+    ny /= n;
+    const wave = Math.sin(t * 10 - f * 6) * 0.07 * f;
+    const half = (head / S) * 0.8 * (1 - f);
+    left.push([sx(p.x + nx * (wave + half)), sy(p.y + ny * (wave + half))]);
+    right.push([sx(p.x + nx * (wave - half)), sy(p.y + ny * (wave - half))]);
   }
   const x = sx(spark.x);
   const y = sy(spark.y);
-  drawGlow(glow(44, 100, 80), x, y, r * 8, 0.75);
+  g.globalCompositeOperation = "lighter";
+  drawGlow(glow(40, 100, 74), x, y, head * 6, 0.7);
   g.globalCompositeOperation = "source-over";
-  g.globalAlpha = 0.3;
-  g.fillStyle = "rgb(140,50,70)";
+  g.globalAlpha = 0.8;
+  g.fillStyle = "hsl(40,100%,82%)";
   g.beginPath();
-  g.arc(x, y, r * 1.45, 0, Math.PI * 2);
+  g.moveTo(...left[0]);
+  for (const p of left) g.lineTo(...p);
+  for (const p of right.reverse()) g.lineTo(...p);
+  g.closePath();
   g.fill();
   g.globalAlpha = 1;
-  g.fillStyle = "hsl(38,100%,60%)";
+  g.fillStyle = "hsl(42,100%,84%)";
   g.beginPath();
-  g.arc(x, y, r, 0, Math.PI * 2);
+  g.arc(x, y, head, 0, Math.PI * 2);
   g.fill();
-  g.fillStyle = "#fffdf2";
+  g.fillStyle = "#fffef8";
   g.beginPath();
-  g.arc(x - r * 0.15, y - r * 0.15, r * 0.5, 0, Math.PI * 2);
+  g.arc(x, y, head * 0.55, 0, Math.PI * 2);
   g.fill();
 }
 
