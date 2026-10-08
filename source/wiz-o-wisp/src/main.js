@@ -32,10 +32,9 @@ const HOP_SPEED = 2;
 const LANE = 1;
 const FLATTEST = (20 * Math.PI) / 180;
 // The shortest hop: side by side, a little clear of each other. Any two hops climb further than a
-// step reaches above and below, so no two steps ever overlap.
+// step reaches above and below, so no two steps ever overlap. There's no longest: a long note or
+// rest climbs as far as it lasts, and the camera follows the spark there (see cameraGoal).
 const HOP_MIN = (STEP_REACH.side * 2 * STEP_WIDTH + 0.08) / Math.cos(FLATTEST);
-// The longest: a long rest climbs no more than this, and the camera pulls back to show it.
-const HOP_MAX = 8;
 const FIRST_RISE = 1.1; // from the starting cloud up to the first step
 const HOVER = 0.3; // the wisp floats this far above the step it's on
 const ANCHOR = 0.7; // the wisp's step sits this far down the screen
@@ -258,6 +257,7 @@ const state = {
   steps: [],
   cur: -1, // the step the wisp stands on; -1 is the starting cloud
   lastHit: 0, // game time of the last note played
+  prevHit: 0, // ...and of the one before it
   spb: 0.65, // seconds per beat, following the player
   streak: 0,
   bestStreak: 0,
@@ -343,7 +343,7 @@ function buildSteps(song) {
     else dir = Math.random() < 0.5 ? -1 : 1;
     if (!prev) x = dir * LANE;
     else {
-      const length = clamp(waits[i - 1] * scale, HOP_MIN, HOP_MAX);
+      const length = Math.max(HOP_MIN, waits[i - 1] * scale);
       const side = Math.min(length * Math.cos(FLATTEST), LANE);
       x += dir * side;
       y += Math.sqrt(length * length - side * side);
@@ -393,36 +393,102 @@ function hopScale(waits) {
   return Math.max(HOP_SPEED, HOP_MIN / sorted[Math.floor(sorted.length * 0.02)]);
 }
 
+// ---------- The spark ----------
+// A spark sets off from the step just played as its note sounds and runs along the path to the
+// next step at an even speed, reaching it right when that note is due, as the ring closes on it.
+// Every hop is as long as its wait, so the spark runs at one speed all song long.
+//
+// The path is the one the thread of light traces once the wisp has flown it: a curve from step to
+// step through a point a little above the higher one.
+function pathPoint(a, b, f) {
+  const cx = (a.x + b.x) / 2;
+  const cy = Math.max(a.y, b.y) + 0.35;
+  const u = 1 - f;
+  return { x: u * u * a.x + 2 * u * f * cx + f * f * b.x, y: u * u * a.y + 2 * u * f * cy + f * f * b.y };
+}
+
+// Points along the path from `a` to `b` at even distances apart, worked out once per step.
+const PATH_POINTS = 24;
+function pathFrom(a, b) {
+  if (a.path) return a.path;
+  const raw = [];
+  for (let k = 0; k <= PATH_POINTS * 2; k++) raw.push(pathPoint(a, b, k / (PATH_POINTS * 2)));
+  const along = [0];
+  for (let k = 1; k < raw.length; k++) along.push(along[k - 1] + Math.hypot(raw[k].x - raw[k - 1].x, raw[k].y - raw[k - 1].y));
+  const total = along[along.length - 1];
+  const points = [];
+  let k = 1;
+  for (let n = 0; n <= PATH_POINTS; n++) {
+    const want = (n / PATH_POINTS) * total;
+    while (k < along.length - 1 && along[k] < want) k++;
+    const f = (want - along[k - 1]) / (along[k] - along[k - 1] || 1);
+    points.push({ x: lerp(raw[k - 1].x, raw[k].x, f), y: lerp(raw[k - 1].y, raw[k].y, f) });
+  }
+  return (a.path = points);
+}
+
+// Where along the path, `q` (0 to 1) of the way by distance.
+function pointAlong(points, q) {
+  const at = clamp(q, 0, 1) * PATH_POINTS;
+  const k = Math.min(Math.floor(at), PATH_POINTS - 1);
+  return { x: lerp(points[k].x, points[k + 1].x, at - k), y: lerp(points[k].y, points[k + 1].y, at - k) };
+}
+
+// The spark's run at time `t`: its path, and how far along it is (0 to 1).
+function sparkAt(t) {
+  if (state.mode !== "playing" || state.cur < 0) return null;
+  let i = state.cur;
+  let start = state.lastHit;
+  let end = expectedNext();
+  // An early perfect tap holds its note for the beat, so until then the spark is still on its way
+  // to the step the wisp has already hopped to.
+  if (t < start && i > 0) {
+    i--;
+    end = start;
+    start = state.prevHit;
+  }
+  const b = state.steps[i + 1];
+  if (!b) return null;
+  const points = pathFrom(state.steps[i], b);
+  const q = clamp((t - start) / Math.max(0.05, end - start), 0, 1);
+  return { points, q, seconds: end - start, ...pointAlong(points, q) };
+}
+
 // ---------- The camera ----------
-// The camera follows the wisp, leaning partway toward the next step so the way ahead is always on
-// show. A next step that would still sit off the screen, or crowded against its edge, pulls the
-// camera further, as far as it can go while the wisp stays in view; a step too far away for that
-// (after a long note or a rest) pulls it back as well; and if either one is actually off the
-// screen, the camera hurries.
+// The camera follows the wisp (or the step it's flying to), leaning partway toward the next step
+// so the way ahead is always on show. A next step that would still sit off the screen, or crowded
+// against its edge, pulls the camera further, as far as it can go while the wisp stays in view;
+// and if either one is actually off the screen, the camera hurries. A step too far away to show
+// with the wisp (after a long note or a rest) is left off the screen: the camera rides along with
+// the spark instead, keeping it mid-screen, until it reaches the step.
 const LEAN = { x: 0.5, y: 0.35 }; // how far toward the next step the camera leans
 const FRAME = { top: 0.22, bottom: 0.14, side: 0.12 }; // edges of the screen kept clear, as fractions of it
-const ZOOM_MIN = 0.6; // the furthest the camera pulls back
+const RATE = { calm: 3, urgent: 7, ride: 6 }; // how quickly the camera closes on where it's going
 
 function cameraGoal() {
-  const goal = { x: wisp.x, y: wisp.groundY, zoom: 1, urgent: false };
   const next = state.mode === "playing" ? state.steps[state.cur + 1] : null;
-  if (!next) return goal;
-  const fitY = (H * (1 - FRAME.top - FRAME.bottom)) / unit / Math.abs(next.y - wisp.groundY);
-  const fitX = (W * (1 - 2 * FRAME.side)) / unit / Math.abs(next.x - wisp.x);
-  goal.zoom = clamp(Math.min(fitY, fitX), ZOOM_MIN, 1);
-  const scale = unit * goal.zoom;
-  goal.x += (next.x - wisp.x) * LEAN.x;
-  goal.y += (next.y - wisp.groundY) * LEAN.y;
+  if (!next) return { x: wisp.x, y: wisp.groundY, rate: RATE.calm };
+  const at = state.cur < 0 ? { x: wisp.x, y: wisp.groundY } : state.steps[state.cur];
+  const goal = { x: at.x + (next.x - at.x) * LEAN.x, y: at.y + (next.y - at.y) * LEAN.y, rate: RATE.calm };
   // Up: the next step no higher than FRAME.top below the top; the wisp no lower than FRAME.bottom.
-  const nextOnScreen = next.y - (H * (ANCHOR - FRAME.top)) / scale;
-  const wispOnScreen = wisp.groundY + (H * (1 - ANCHOR - FRAME.bottom)) / scale;
+  const nextOnScreen = next.y - (H * (ANCHOR - FRAME.top)) / unit;
+  const wispOnScreen = at.y + (H * (1 - ANCHOR - FRAME.bottom)) / unit;
   goal.y = Math.min(Math.max(goal.y, nextOnScreen), wispOnScreen);
   // Across: both within FRAME.side of the sides.
-  const reach = (W * (0.5 - FRAME.side)) / scale;
-  goal.x = clamp(goal.x, Math.max(next.x, wisp.x) - reach, Math.min(next.x, wisp.x) + reach);
+  const reach = (W * (0.5 - FRAME.side)) / unit;
+  goal.x = clamp(goal.x, Math.max(next.x, at.x) - reach, Math.min(next.x, at.x) + reach);
   // Hurry when the next step or the wisp is off the screen right now.
   const off = (x, y) => sx(x) < 0 || sx(x) > W || sy(y) < 0 || sy(y) > H;
-  goal.urgent = off(next.x, next.y) || off(wisp.x, wisp.groundY);
+  if (off(next.x, next.y) || off(at.x, at.y)) goal.rate = RATE.urgent;
+  // Too far apart to show both: once the spark climbs past mid-screen, ride along with it. The
+  // camera lags anything moving, so it aims ahead by the spark's speed to keep it right in the middle.
+  const spark = nextOnScreen > wispOnScreen && sparkAt(now());
+  if (spark) {
+    const ahead = pointAlong(spark.points, spark.q + 0.01);
+    const climb = spark.q < 1 ? (ahead.y - spark.y) / (0.01 * spark.seconds) : 0;
+    goal.y = Math.max(goal.y, spark.y - (H * (ANCHOR - 0.5)) / unit + climb / RATE.ride);
+    goal.rate = RATE.ride;
+  }
   return goal;
 }
 
@@ -518,6 +584,7 @@ function strike(i, t) {
   hop(step, t, prev ? step.beat - prev.beat : 1);
   if (grade) texts.push({ x: step.x, y: step.y, text: grade, color: GRADE_COLORS[grade], start: t });
   state.cur = i;
+  state.prevHit = state.lastHit;
   state.lastHit = onTime;
   if (i === state.steps.length - 1) state.endAt = onTime + step.beats * state.spb;
   updateHud();
@@ -597,7 +664,7 @@ function wrongWay(dir, t) {
 // After the last note: a rolled chord, and the wisp rises into the light.
 function beginOutro(t) {
   state.mode = "outro";
-  state.outro = { start: t, fromY: wisp.groundY, fromZoom: cam.zoom };
+  state.outro = { start: t, fromY: wisp.groundY };
   ui.pause.hidden = true;
   ui.streakPill.hidden = true;
   state.song.ending.forEach((midi, k) => later(k * 0.075, (at) => playPiano(midi, { velocity: 0.38 + k * 0.03, hold: 4.5, at })));
@@ -717,15 +784,13 @@ function update(dt) {
     const u = clamp((t - state.outro.start - 0.4) / 3.2, 0, 1);
     const e = u * u * (3 - 2 * u);
     wisp.y = wisp.groundY = state.outro.fromY + e * 3.2;
-    cam.zoom = lerp(state.outro.fromZoom, 0.8, e);
+    cam.zoom = lerp(1, 0.8, e);
     state.radiance = e;
     if (state.mode === "outro" && t - state.outro.start > 4) finish();
   }
   const goal = cameraGoal();
-  const rate = goal.urgent ? 7 : 3;
-  cam.x += (goal.x - cam.x) * ease(rate, dt);
-  cam.y += (goal.y - cam.y) * ease(rate, dt);
-  if (!state.outro) cam.zoom += (goal.zoom - cam.zoom) * ease(rate, dt);
+  cam.x += (goal.x - cam.x) * ease(goal.rate, dt);
+  cam.y += (goal.y - cam.y) * ease(goal.rate, dt);
 
   if (t >= state.tintAt) {
     state.tintTarget = state.tintNext;
@@ -879,7 +944,8 @@ function drawPlatform(s, t, lit, isNext) {
   g.fill();
 }
 
-// A ring closing in on the next step, meeting its edge when the note is due.
+// A ring closing in on the next step at an even pace, meeting its edge when the note is due, just
+// as the spark gets there. A soft dark edge keeps it readable against the bright sky.
 function drawApproach(s, t) {
   const x = sx(s.x);
   const y = sy(s.y);
@@ -893,20 +959,84 @@ function drawApproach(s, t) {
     const due = expectedNext();
     if (t > due) {
       k = 1.08 + 0.06 * Math.sin((t - due) * 5);
-      alpha = 0.65 + 0.2 * Math.sin((t - due) * 5);
+      alpha = 0.75 + 0.2 * Math.sin((t - due) * 5);
     } else {
       const q = clamp((t - state.lastHit) / Math.max(0.05, due - state.lastHit), 0, 1);
-      k = 1.08 + 1.5 * Math.pow(1 - q, 1.4);
-      alpha = 0.15 + 0.7 * q;
+      k = 1.08 + 1.5 * (1 - q);
+      alpha = 0.35 + 0.6 * q;
     }
   }
-  g.globalCompositeOperation = "lighter";
-  g.globalAlpha = alpha;
-  g.strokeStyle = `hsl(${s.hue},100%,86%)`;
-  g.lineWidth = Math.max(1.5, w * 0.035);
+  g.globalCompositeOperation = "source-over";
   g.beginPath();
   g.ellipse(x, y, (w / 2) * k, w * 0.15 * k, 0, 0, Math.PI * 2);
+  g.globalAlpha = alpha * 0.3;
+  g.strokeStyle = `hsl(${s.hue},65%,36%)`;
+  g.lineWidth = Math.max(3.5, w * 0.09);
   g.stroke();
+  g.globalAlpha = alpha;
+  g.strokeStyle = `hsl(${s.hue},100%,92%)`;
+  g.lineWidth = Math.max(1.5, w * 0.035);
+  g.stroke();
+}
+
+// The way the spark still has to go, dotted. The dots stay put as it passes over them.
+function drawSparkPath(t) {
+  const spark = sparkAt(t);
+  if (!spark || spark.q >= 1) return;
+  const { points, q } = spark;
+  const length = Math.hypot(points[1].x - points[0].x, points[1].y - points[0].y) * PATH_POINTS * S;
+  const gap = Math.max(7, S * 0.16);
+  g.globalCompositeOperation = "source-over";
+  g.lineCap = "round";
+  g.lineJoin = "round";
+  g.setLineDash([0, gap]);
+  g.lineDashOffset = (q * length) % gap;
+  g.beginPath();
+  g.moveTo(sx(spark.x), sy(spark.y));
+  for (let k = Math.ceil(q * PATH_POINTS); k <= PATH_POINTS; k++) g.lineTo(sx(points[k].x), sy(points[k].y));
+  g.globalAlpha = 0.22;
+  g.strokeStyle = "rgb(120,40,80)";
+  g.lineWidth = Math.max(4, S * 0.07);
+  g.stroke();
+  g.globalAlpha = 0.85;
+  g.strokeStyle = "#fff7e8";
+  g.lineWidth = Math.max(2.5, S * 0.045);
+  g.stroke();
+  g.setLineDash([]);
+  g.lineDashOffset = 0;
+}
+
+// The spark itself: a bead of gold light with a short tail, a darker rim so it shows on white,
+// pulsing on the step once it's there and the note is due.
+function drawSpark(t) {
+  const spark = sparkAt(t);
+  if (!spark) return;
+  const { points, q } = spark;
+  const length = Math.hypot(points[1].x - points[0].x, points[1].y - points[0].y) * PATH_POINTS;
+  const r = Math.max(5, S * 0.085) * (q >= 1 ? 1 + 0.18 * Math.sin(t * 10) : 1);
+  g.globalCompositeOperation = "lighter";
+  for (let k = 4; k >= 1; k--) {
+    const p = pointAlong(points, q - (k * 0.09) / length);
+    drawGlow(glow(42, 100, 78), sx(p.x), sy(p.y), r * (4.5 - k * 0.6), 0.35 * (1 - k / 5));
+  }
+  const x = sx(spark.x);
+  const y = sy(spark.y);
+  drawGlow(glow(44, 100, 80), x, y, r * 8, 0.75);
+  g.globalCompositeOperation = "source-over";
+  g.globalAlpha = 0.3;
+  g.fillStyle = "rgb(140,50,70)";
+  g.beginPath();
+  g.arc(x, y, r * 1.45, 0, Math.PI * 2);
+  g.fill();
+  g.globalAlpha = 1;
+  g.fillStyle = "hsl(38,100%,60%)";
+  g.beginPath();
+  g.arc(x, y, r, 0, Math.PI * 2);
+  g.fill();
+  g.fillStyle = "#fffdf2";
+  g.beginPath();
+  g.arc(x - r * 0.15, y - r * 0.15, r * 0.5, 0, Math.PI * 2);
+  g.fill();
 }
 
 function drawSteps(t) {
@@ -1131,7 +1261,9 @@ function draw() {
   drawSteps(t);
   drawEffects(t);
   drawParticles();
+  drawSparkPath(t);
   drawWisp(t);
+  drawSpark(t);
   drawHint(t);
   drawClouds(true, amb);
   drawTexts(t);
@@ -1527,6 +1659,7 @@ if (location.hostname === "localhost") {
     buildSteps,
     loadSong,
     cameraGoal,
+    sparkAt,
     // Recording a demo video (tools/record-demo.mjs): the game runs on a clock the recorder steps
     // one frame at a time, and its sounds are logged, then rendered offline to match.
     record: {

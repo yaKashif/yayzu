@@ -18,7 +18,7 @@
   ],
   "howToPlay": [
     "Tap the side the next step is on, left or right, to hop the wisp onto it and play its note.",
-    "Hop on the beat: the ring closing in on the next step meets its edge when the note is due.",
+    "Hop on the beat: a spark runs to the next step as a ring closes in on it, and both arrive when the note is due.",
     "Steps go right when the tune climbs and left when it falls, and their spacing follows the rhythm.",
     "The song waits for you, so there's no rush: a wrong-way hop just bumps the wisp back.",
     "Earn stars by the share of perfect notes: one at half, two at 80%, three when every note is perfect. Two stars unlock the next song.",
@@ -81,11 +81,11 @@
     "Piano: Salamander Grand Piano by Alexander Holm, CC BY 3.0",
     "Scores: the Mutopia Project; Canon in D typeset by Michael Fischer v. Mollard, CC BY 4.0; the rest public domain"
   ],
-  "version": "1.1.1",
+  "version": "1.2.0",
   "released": "2026-10-02",
   "sizeKB": {
-    "total": 460,
-    "initialGzip": 21
+    "total": 462,
+    "initialGzip": 22
   },
   "contentRating": "everyone"
 }
