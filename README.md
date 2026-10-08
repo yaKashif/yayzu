@@ -15,7 +15,7 @@ game is free.
 | [<img src="games/boulder-bear/thumbnail.jpg" alt="Boulder Bear" width="240">](https://yayzu.com/boulder-bear/) | **[Boulder Bear](https://yayzu.com/boulder-bear/)** | Help a brave teddy dodge, jump, duck and ride everything rolling down a mountain. |
 | [<img src="games/fruit-slash/thumbnail.jpg" alt="Fruit Slash" width="240">](https://yayzu.com/fruit-slash/) | **[Fruit Slash](https://yayzu.com/fruit-slash/)** | Swipe to slice flying fruit, chain combos, and never hit a bomb. |
 | [<img src="games/wiz-o-wisp/thumbnail.jpg" alt="Wiz o Wisp" width="240">](https://yayzu.com/wiz-o-wisp/) | **[Wiz o Wisp](https://yayzu.com/wiz-o-wisp/)** | Hop a glowing wisp up steps of light and play piano songs on the beat. |
-| [<img src="games/naseeb/thumbnail.jpg" alt="Naseeb" width="240">](https://yayzu.com/naseeb/) | **[Naseeb](https://yayzu.com/naseeb/)** | Drive a 1970 Land Cruiser FJ40 with real physics: every tire grips, slips and spins. |
+| [<img src="games/naseeb/thumbnail.jpg" alt="Naseeb" width="240">](https://yayzu.com/naseeb/) | **[Naseeb: The Jeep Driver](https://yayzu.com/naseeb/)** | Crawl an old 4x4 jeep over logs, rock steps, ditches and side slopes on an off-road test ground, with real physics. |
 
 More games are on the way.
 

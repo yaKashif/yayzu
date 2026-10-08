@@ -1,6 +1,6 @@
 // Checks the FJ40 model against results worked out by hand from the same physics.
 // Usage: node tools/check-physics.mjs
-import { Sim, STRIPS, STRIP, TIRE, CAR, ENGINE, GEARS, AXLE_RATIO, DEFAULTS, STEP } from "../src/physics.js";
+import { Sim, STRIPS, STRIP, STRIP_GROUND, TIRE, CAR, ENGINE, GEARS, AXLE_RATIO, SUSPENSION, DEFAULTS, STEP } from "../src/physics.js";
 
 const R = TIRE.radius;
 // The car with its rear tires just onto a strip, so all four are on it and a test has the rest of
@@ -32,11 +32,11 @@ const settle = (sim) => {
   sim.update();
   run(sim, 1);
 };
-const make = (settings = {}, options = {}) => new Sim({ ...DEFAULTS, ...settings }, options);
+const make = (settings = {}, options = {}) => new Sim({ ...DEFAULTS, ...settings }, { ground: STRIP_GROUND, ...options });
 
 {
   const sim = make();
-  console.log(`${CAR.name}: ${sim.mass.toFixed(0)} kg, centre of mass ${((R + sim.centre[1]) * 100).toFixed(0)} cm up, ${(100 - sim.rearShare * 100).toFixed(0)}% on the front tires`);
+  console.log(`${CAR.name}: ${sim.mass.toFixed(0)} kg (${sim.sprungMass.toFixed(0)} on the springs), centre of mass ${((R + sim.totalCentre[1]) * 100).toFixed(0)} cm up, ${(100 - sim.rearShare * 100).toFixed(0)}% on the front tires`);
 }
 
 // 1. At rest the tires carry the weight, split front to back by where the centre of mass is.
@@ -66,7 +66,7 @@ for (const drive of ["4x4", "rear"]) {
   sim.reset(at("Dry asphalt"), 0);
   settle(sim);
   sim.shift(3);
-  run(sim, 3, { throttle: 1 });
+  run(sim, 4, { throttle: 1 });
   const want = sim.spin * GEARS[2].ratio * AXLE_RATIO * (60 / (2 * Math.PI));
   truth("clutch in after pulling away", sim.clutch === "in", sim.clutch);
   check("engine rpm = wheel speed × gearing", sim.rpm, want, 1e-3);
@@ -94,33 +94,63 @@ for (const drive of ["4x4", "rear"]) {
   check("top speed in Low 1st, against the governor (m/s)", sim.forwardSpeed, want, 0.02);
 }
 
-// 6. The automatic works up through the gears.
+// 6. The automatic works up through high range: High 1st, 2nd, 3rd.
 {
   const sim = make();
   sim.reset(at("Dry asphalt"), 0);
   settle(sim);
-  run(sim, 7, { throttle: 1 });
-  truth("automatic: up to at least 4th in 7 s of full throttle", sim.gear >= 4, `gear ${sim.gear}, ${sim.forwardSpeed.toFixed(1)} m/s, ${sim.rpm.toFixed(0)} rpm`);
+  truth("automatic: starts in High 1st", sim.gear === 3, `gear ${sim.gear}`);
+  run(sim, 9, { throttle: 1 });
+  truth("automatic: into High 3rd within 9 s of holding the throttle", sim.gear === 6, `gear ${sim.gear}, ${(sim.forwardSpeed * 3.6).toFixed(0)} km/h, ${sim.rpm.toFixed(0)} rpm`);
+}
+// 6a. Pulling away, the clutch takes up as the engine revs: a 25% press holds it near 1,700 rpm,
+//     a full one near 2,000.
+for (const [pedal, near] of [[0.25, 1700], [1, 2000]]) {
+  const sim = make();
+  sim.reset(at("Dry asphalt"), 0);
+  settle(sim);
+  sim.throttleHeld = 0;
+  run(sim, 0.5, { throttle: pedal });
+  sim.pedal = pedal;
+  for (let t = 0; t < 0.3; t += STEP) {
+    sim.pedal = pedal;
+    sim.controls = { throttle: pedal, brake: 0, steer: 0 };
+    sim.step(STEP);
+  }
+  check(`pulling away at ${pedal * 100}% throttle, the clutch slipping: engine rpm`, sim.rpm, near, 0.12);
+}
+// 6b. The throttle opens gently and further the longer it's held.
+{
+  const sim = make();
+  sim.reset(at("Dry asphalt"), 0);
+  settle(sim);
+  const opening = [];
+  for (const s of [0.1, 0.5, 1.0, 2.0]) {
+    run(sim, s - (opening.length ? [0.1, 0.5, 1.0, 2.0][opening.length - 1] : 0), { throttle: 1 });
+    opening.push(sim.pedal);
+  }
+  truth("throttle opens 25% at once, all the way after ~2 s", Math.abs(opening[0] - 0.25) < 0.01 && opening[1] < 0.5 && opening[3] > 0.99, opening.map((o) => `${Math.round(o * 100)}%`).join(" → "));
 }
 
-// 7. Braking hard from 15 m/s on asphalt, out of gear: the drums lock the tires, so it stops in
-//    about v² / 2μg, μ somewhere between sliding (0.75) and peak (1.0) grip.
+// 7. Braking hard from 7.5 m/s on asphalt (short enough to stop on the strip), out of gear: the
+//    drums lock the tires, so it stops in about v² / 2μg, μ between the bias-ply tires' sliding
+//    and peak grip.
 {
   const sim = make();
   sim.reset(at("Dry asphalt"), 0);
   settle(sim);
   sim.shift(0);
-  sim.v = [0, 0, -15];
-  sim.spinAll(15 / R);
+  sim.v = [0, 0, -7.5];
+  sim.spinAll(7.5 / R);
   const z0 = sim.p[2];
   for (let t = 0; t < 6 && sim.forwardSpeed > 0.01; t += STEP) {
     sim.controls = { throttle: 0, brake: 1, steer: 0 };
     sim.step(STEP);
   }
   const distance = sim.p[2] - z0 < 0 ? z0 - sim.p[2] : sim.p[2] - z0;
-  const most = (15 * 15) / (2 * 0.75 * 9.81);
-  const least = (15 * 15) / (2 * 1.0 * 9.81);
-  truth("stopping distance from 15 m/s", distance > least * 0.95 && distance < most * 1.1, `${distance.toFixed(1)} m (between ${least.toFixed(1)} and ${most.toFixed(1)})`);
+  const most = (7.5 * 7.5) / (2 * 0.75 * TIRE.grip * 9.81);
+  const least = (7.5 * 7.5) / (2 * 1.0 * TIRE.grip * 9.81);
+  truth("stopping distance from 7.5 m/s", distance > least * 0.95 && distance < most * 1.1, `${distance.toFixed(1)} m (between ${least.toFixed(1)} and ${most.toFixed(1)})`);
 }
 
 // 8. Coasting out of gear, it slows at (rolling moments / r + drag) / (m + I / r²).
@@ -169,14 +199,13 @@ for (const drive of ["4x4", "rear"]) {
   sim.shift(0);
   sim.v = [0, 0, -4];
   sim.spinAll(4 / R);
-  const spring = () => sim.wheels.reduce((s, w) => s + 0.5 * sim.kTire * Math.max(0, R - w.contact.centre[1]) ** 2, 0);
   run(sim, 0.3);
-  let last = sim.energy() + spring();
+  let last = sim.energy();
   let worst = 0;
   sim.controls = { throttle: 0, brake: 0, steer: 0.5 };
   for (let t = 0; t < 2; t += STEP) {
     sim.step(STEP);
-    const e = sim.energy() + spring();
+    const e = sim.energy();
     worst = Math.max(worst, e - last);
     last = Math.min(last, e);
   }
@@ -198,8 +227,119 @@ for (const drive of ["4x4", "rear"]) {
   const sim = make({ lockers: "both" });
   sim.reset(at("Ice | asphalt"), 0);
   settle(sim);
-  run(sim, 1, { throttle: 1 });
+  sim.shift(1); // Low 1st, as you would on a slippery start
+  run(sim, 2, { throttle: 1 });
   truth("split grip, both locked: turns toward the ice", sim.heading > 0.002, `heading ${((sim.heading * 180) / Math.PI).toFixed(1)}° left`);
+}
+
+// 12. The suspension. At rest the springs sit near their static ride height.
+{
+  const sim = make();
+  sim.reset(at("Dry asphalt"), 0);
+  settle(sim);
+  const most = Math.max(...sim.axles.flatMap((a) => a.travel.map(Math.abs)));
+  truth("at rest, springs near their static height", most < 0.004, `${(most * 1000).toFixed(1)} mm at most`);
+}
+// 13. Let go 4 cm low, the body comes back up firmly: quickly, and without bouncing past where it
+//     sits (the shocks and the leaves' friction see to that), stopping within the friction's band.
+{
+  const sim = make({}, { air: false });
+  sim.reset(at("Dry asphalt"), 0);
+  settle(sim);
+  sim.p[1] -= 0.04;
+  let k = 0;
+  for (const a of sim.axles) k += 2 / (1 / a.rate + 1 / sim.kTire);
+  const rest = sim.p[1] + 0.04;
+  const band = (4 * SUSPENSION.leafFriction) / k; // where the leaves' friction can hold it
+  let back = 0;
+  let high = -Infinity;
+  for (let t = 0; t < 1.5; t += STEP) {
+    sim.step(STEP);
+    if (!back && sim.p[1] > rest - band - 0.003) back = t;
+    high = Math.max(high, sim.p[1] - rest);
+  }
+  truth("pushed down 4 cm, back within 0.4 s", back > 0 && back < 0.4, `${back.toFixed(2)} s`);
+  truth("and no bounce past where it sits", high < 0.005, `${(high * 1000).toFixed(1)} mm above`);
+}
+// 14. Pulling away the body squats at the back; braking it dives at the front; turning left it
+//     leans out, to the right.
+{
+  const sim = make();
+  sim.reset(at("Dry asphalt"), 0);
+  settle(sim);
+  sim.shift(1); // Low 1st, the throttle held: a strong pull
+  run(sim, 1.6, { throttle: 1 });
+  const [front, rear] = sim.axles;
+  const squat = (rear.travel[0] + rear.travel[1]) / 2 - (front.travel[0] + front.travel[1]) / 2;
+  truth("pulling away hard, the back squats", squat > 0.004, `rear ${(squat * 1000).toFixed(1)} mm more squashed than front`);
+}
+{
+  const sim = make();
+  sim.reset(at("Dry asphalt"), 0);
+  settle(sim);
+  sim.shift(0);
+  sim.v = [0, 0, -10];
+  sim.spinAll(10 / R);
+  run(sim, 0.4, { brake: 1 });
+  const [front, rear] = sim.axles;
+  const dive = (front.travel[0] + front.travel[1]) / 2 - (rear.travel[0] + rear.travel[1]) / 2;
+  truth("braking, the front dives", dive > 0.005, `front ${(dive * 1000).toFixed(1)} mm more squashed than rear`);
+}
+// 15. Body roll in a steady turn, against the hand-worked figure: the sprung weight times the
+//     sideways g times its centre of mass's height over the roll axis, over the roll stiffness
+//     (the springs, rate × spacing² / 2 each pair, plus the leaves' twist, in series with the
+//     tires). Then, steering straightened, the body comes back to level firmly, without rocking
+//     past it.
+{
+  const sim = make({ drive: "rear" }, { air: false });
+  sim.reset(at("Dry asphalt"), 0);
+  settle(sim);
+  sim.shift(5); // High 2nd, the throttle held a little to keep about 7 m/s
+  sim.v = [0, 0, -7];
+  sim.spinAll(7 / R);
+  let lean = 0;
+  let g = 0;
+  for (let t = 0; t < 3; t += STEP) {
+    sim.controls = { throttle: sim.forwardSpeed < 7 ? 1 : 0, brake: 0, steer: 0.3 };
+    sim.step(STEP);
+    if (t > 2.5) {
+      lean += (Math.asin(sim.ax[1]) * STEP) / 0.5;
+      g += (Math.abs(sim.forwardSpeed * sim.w[1]) / sim.g) * (STEP / 0.5);
+    }
+  }
+  const leanDeg = (lean * 180) / Math.PI;
+  const rollAxis = (sim.axles[0].rollCentre + sim.axles[1].rollCentre) / 2 - R; // above the hub line
+  const arm = sim.centre[1] - rollAxis;
+  // The tires lean on whatever's under them: on soft ground, its give in series with theirs.
+  let springs = 0;
+  let tires = 0;
+  for (const a of sim.axles) {
+    springs += 2 * a.rate * a.seat ** 2 + a.twist;
+    for (const w of a.wheels) {
+      const give = w.contact.surface.give;
+      const k = give === Infinity ? sim.kTire : 1 / (1 / sim.kTire + 1 / give);
+      tires += k * (a.track / 2) ** 2;
+    }
+  }
+  // The body leans on the springs by its own moment (leaning, its weight shifts outward and adds
+  // to it: less stiffness by m·g·arm); the axles lean on the tires by the whole car's.
+  const onSprings = (sim.sprungMass * sim.g * g * arm) / (springs - sim.sprungMass * sim.g * arm);
+  const onTires = (sim.mass * sim.g * g * (R + sim.totalCentre[1])) / tires;
+  const want = onSprings + onTires;
+  truth(`steady turn at ${g.toFixed(2)} g: leans right`, leanDeg < 0, `${leanDeg.toFixed(1)}°, ${(-leanDeg / g).toFixed(1)}° per g, on ${sim.wheels.map((w) => w.contact.surface.id).join("/")}`);
+  // The leaves' friction can hold the body anywhere within its band of the frictionless lean.
+  const band = (4 * SUSPENSION.leafFriction * 0.42) / (springs - sim.sprungMass * sim.g * arm);
+  const off = Math.abs(-lean - want);
+  truth("steady turn: body roll as worked out, within the leaves' friction band", off < 0.25 * want + band, `${((-lean * 180) / Math.PI).toFixed(2)}° against ${((want * 180) / Math.PI).toFixed(2)}° ± ${((band * 180) / Math.PI).toFixed(2)}°`);
+  // Straighten up and watch it come back.
+  const start = -lean;
+  let past = 0;
+  for (let t = 0; t < 2; t += STEP) {
+    sim.controls = { throttle: 0, brake: 0, steer: 0 };
+    sim.step(STEP);
+    past = Math.max(past, Math.asin(sim.ax[1])); // leaning the other way, to the left
+  }
+  truth("straightened, it settles without rocking far past level", past < 0.2 * start, `overshoot ${((past * 180) / Math.PI).toFixed(2)}° after ${((start * 180) / Math.PI).toFixed(1)}°`);
 }
 
 if (failed) {

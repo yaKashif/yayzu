@@ -1,5 +1,6 @@
-import { Sim, DEFAULTS, WORLDS, SURFACES, STRIPS, STRIP, TIRE, CAR, ENGINE, GEARS, stripNear } from "./physics.js";
+import { Sim, DEFAULTS, WORLDS, COURSE, TIRE, CAR, ENGINE, GEARS } from "./physics.js";
 import { World, surfaceColor } from "./scene3d.js";
+import { Sound } from "./sound.js";
 
 // Saved settings from before the FJ40 don't carry over.
 const SETTINGS_KEY = "naseeb-fj40-settings";
@@ -8,12 +9,13 @@ const DROP = 0.1; // metres the car falls when it's put down
 const MIN_TAP = 0.15; // seconds: even the quickest tap on the throttle opens it for this long
 const SLOW = 0.2; // slow motion runs at this speed
 
-// Camera views: yaw 0 is straight behind the car; pitch is up from level; dist in metres.
+// Camera views: chase (behind, racing-game style), the driver's seat, and two orbits. For the
+// orbits yaw 0 is straight behind the car, pitch is up from level, dist in metres.
 const VIEWS = [
-  { name: "Behind", yaw: 0.35, pitch: 0.28, dist: 7 },
-  { name: "Side", yaw: Math.PI / 2, pitch: 0.12, dist: 7 },
-  { name: "Low", yaw: 0.12, pitch: 0.06, dist: 5 },
-  { name: "High", yaw: 0.6, pitch: 1.0, dist: 11 },
+  { name: "Chase", mode: "chase", yaw: 0, pitch: 0.23, dist: 10.7 },
+  { name: "Driver", mode: "driver", yaw: 0, pitch: 0, dist: 10.7 },
+  { name: "Side", mode: "orbit", yaw: Math.PI / 2, pitch: 0.12, dist: 7 },
+  { name: "High", mode: "orbit", yaw: 0.6, pitch: 1.0, dist: 11 },
 ];
 
 const $ = (id) => document.getElementById(id);
@@ -36,12 +38,14 @@ const ui = {
   rolling: $("r-rolling"),
   drag: $("r-drag"),
   torque: $("r-torque"),
+  springsFront: $("r-springs-front"),
+  springsRear: $("r-springs-rear"),
   extra: $("extra"),
   more: $("more"),
-  forces: $("t-forces"),
   slow: $("t-slow"),
   view: $("t-view"),
   drop: $("t-drop"),
+  sound: $("t-sound"),
   settingsButton: $("t-settings"),
   settings: $("settings"),
   close: $("s-close"),
@@ -83,23 +87,54 @@ function saveSettings() {
 let settings = loadSettings();
 const sim = new Sim(settings);
 const world = new World(ui.canvas);
-const view = { forces: true, slow: false, started: false, preset: 0 };
+// forces: the engineer's view, with the force arrows and every readout a driver wouldn't have.
+const view = { forces: false, slow: false, started: false, preset: 0 };
 
 // ---------- Input ----------
-// ▲ is the throttle, ▼ (or Space) the brakes, ◀ ▶ the steering; on screen, or the arrow keys and
-// WASD. Gears: 1 to 6 to pick one yourself, 0 to hand back to the automatic, R reverse, N neutral.
-// Drag the scene to look around; scroll or pinch to come closer.
+// ▲ is the throttle, ▼ brakes, ◀ ▶ steer; on screen, or the arrow keys and WASD. Space only
+// brakes. In the automatic, holding ▼ once stopped puts it in reverse and backs up, ▼ then being
+// the throttle and ▲ the brake; holding ▲ once stopped goes back to drive. Gears: 1 to 6 to pick
+// one yourself, 0 to hand back to the automatic, R reverse, N neutral. Drag the scene to look
+// around; scroll or pinch to come closer.
 
-const keys = { throttle: false, brake: false, left: false, right: false };
-const buttons = { throttle: false, brake: false, left: false, right: false };
+const keys = { throttle: false, back: false, brake: false, left: false, right: false };
+const buttons = { throttle: false, back: false, left: false, right: false };
 let tap = 0; // until when (sim time) a quick tap keeps the throttle open
+const STOPPED = 0.3; // m/s: slow enough to change between drive and reverse
 
+let backFrom = null; // the gear picked by hand before ▼ backed up
 function controls() {
-  const throttle = keys.throttle || buttons.throttle || sim.time < tap ? 1 : 0;
-  const brake = keys.brake || buttons.brake ? 1 : 0;
+  const ahead = keys.throttle || buttons.throttle || sim.time < tap;
+  const back = keys.back || buttons.back;
   const left = keys.left || buttons.left;
   const right = keys.right || buttons.right;
-  return { throttle: brake ? 0 : throttle, brake, steer: left === right ? 0 : left ? 1 : -1 };
+  const steer = left === right ? 0 : left ? 1 : -1;
+  let throttle = ahead;
+  let brake = keys.brake || back;
+  const stopped = Math.abs(sim.forwardSpeed) < STOPPED;
+  // A gear picked by hand, put aside while ▼ backs up (see below); gone once anything else
+  // changes the gear.
+  if (sim.auto || sim.gear !== -1) backFrom = null;
+  const backing = sim.gear === -1 && (sim.auto || backFrom !== null);
+  if (backing) {
+    // Reversing: ▼ drives it back, ▲ brakes, and stopped, ▲ goes back to drive: to the
+    // automatic, or to the gear picked by hand.
+    if (ahead && stopped && !back) {
+      if (sim.auto) sim.autoReverse(false);
+      else sim.shift(backFrom);
+      backFrom = null;
+    }
+    throttle = back;
+    brake = keys.brake || ahead;
+  } else if (back && stopped && !ahead && sim.gear !== -1) {
+    // Stopped, ▼ puts it in reverse, in the automatic or in a gear picked by hand alike.
+    if (sim.auto) sim.autoReverse(true);
+    else {
+      backFrom = sim.gear;
+      sim.shift(-1);
+    }
+  }
+  return { throttle: brake && !(backing && back) ? 0 : throttle ? 1 : 0, brake: brake ? 1 : 0, steer };
 }
 
 function pressThrottle() {
@@ -110,7 +145,7 @@ function pressThrottle() {
 // The on-screen pedals and steering: held while pressed, wherever the finger slides.
 for (const [el, key] of [
   [ui.go, "throttle"],
-  [ui.brake, "brake"],
+  [ui.brake, "back"],
   [ui.left, "left"],
   [ui.right, "right"],
 ]) {
@@ -200,8 +235,8 @@ ui.canvas.addEventListener("contextmenu", (e) => e.preventDefault());
 const KEYS = {
   ArrowUp: "throttle",
   KeyW: "throttle",
-  ArrowDown: "brake",
-  KeyS: "brake",
+  ArrowDown: "back",
+  KeyS: "back",
   Space: "brake",
   ArrowLeft: "left",
   KeyA: "left",
@@ -220,7 +255,7 @@ window.addEventListener("keydown", (e) => {
   const key = KEYS[e.code];
   const digit = /^(Digit|Numpad)([0-9])$/.exec(e.code);
   if (key) {
-    if (!keys[key] && key === "throttle") pressThrottle();
+    if (!keys[key] && (key === "throttle" || key === "back")) pressThrottle();
     keys[key] = true;
   } else if (digit) {
     const n = Number(digit[2]);
@@ -231,6 +266,7 @@ window.addEventListener("keydown", (e) => {
   else if (e.code === "Backspace") drop();
   else if (e.code === "KeyF") toggleForces();
   else if (e.code === "KeyM") toggleSlow();
+  else if (e.code === "KeyK") toggleSound();
   else if (e.code === "KeyV") nextView();
   else if (e.code === "Equal" || e.code === "NumpadAdd") world.zoom(1 / 1.15);
   else if (e.code === "Minus" || e.code === "NumpadSubtract") world.zoom(1.15);
@@ -253,18 +289,39 @@ function drop() {
   sim.reset(sim.along, DROP);
 }
 
-// To the nearest strip of the given kind, the whole car on it.
+// To the start of the nearest obstacle of the given kind, facing it.
 function jumpTo(index) {
-  if (index < 0 || index >= STRIPS.length) return;
+  if (index < 0 || index >= COURSE.sections.length) return;
   tap = 0;
-  sim.reset(stripNear(sim.along, index) + CAR.wheelbase / 2 + 1, DROP);
+  sim.reset(COURSE.sectionNear(sim.along, index) + 2, DROP);
 }
 
 function toggleForces() {
   view.forces = !view.forces;
-  ui.forces.classList.toggle("on", view.forces);
-  ui.forces.setAttribute("aria-pressed", view.forces);
+  document.body.classList.toggle("engineer-view", view.forces);
 }
+
+// Sound: on unless the player turned it off last time.
+const sound = new Sound();
+const SOUND_KEY = "naseeb-sound";
+try {
+  sound.on = localStorage.getItem(SOUND_KEY) !== "off";
+} catch {}
+function showSound() {
+  ui.sound.classList.toggle("on", sound.on);
+  ui.sound.setAttribute("aria-pressed", sound.on);
+}
+function toggleSound() {
+  sound.setOn(!sound.on);
+  showSound();
+  try {
+    localStorage.setItem(SOUND_KEY, sound.on ? "on" : "off");
+  } catch {}
+}
+showSound();
+ui.sound.addEventListener("click", toggleSound);
+// Browsers only let sound play once the player has tapped or pressed something.
+for (const type of ["pointerdown", "keydown"]) window.addEventListener(type, () => sound.wake(), true);
 
 function toggleSlow() {
   view.slow = !view.slow;
@@ -279,7 +336,6 @@ function nextView() {
   ui.view.textContent = `View: ${v.name}`;
 }
 
-ui.forces.addEventListener("click", toggleForces);
 ui.slow.addEventListener("click", toggleSlow);
 ui.view.addEventListener("click", nextView);
 ui.drop.addEventListener("click", drop);
@@ -293,13 +349,11 @@ if (window.innerWidth < 640) {
   ui.more.textContent = "More";
 }
 
-STRIPS.forEach((s, i) => {
+COURSE.sections.forEach((s, i) => {
   const chip = document.createElement("button");
   chip.className = "surface";
-  const l = surfaceColor(s.left.id);
-  const r = surfaceColor(s.right.id);
-  chip.innerHTML = `<i style="background:linear-gradient(90deg, ${l} 50%, ${r} 50%)"></i>${s.name}`;
-  chip.title = s.left === s.right ? `Grip ${s.left.peak} peak, ${s.left.slide} sliding` : `Left tires on ${s.left.name.toLowerCase()}, right on ${s.right.name.toLowerCase()}`;
+  chip.innerHTML = `<i style="background:${surfaceColor(s.look)}"></i>${s.name}`;
+  chip.title = s.note;
   chip.addEventListener("click", () => jumpTo(i));
   ui.surfaces.append(chip);
 });
@@ -322,7 +376,8 @@ function showSettings() {
   const rows = [
     ["Kerb weight", `${sim.mass.toFixed(0)} kg`],
     ["On the front tires", `${Math.round(100 - sim.rearShare * 100)}%`],
-    ["Centre of mass", `${((TIRE.radius + sim.centre[1]) * 100).toFixed(0)} cm up`],
+    ["Centre of mass", `${((TIRE.radius + sim.totalCentre[1]) * 100).toFixed(0)} cm up`],
+    ["On the springs", `${sim.sprungMass.toFixed(0)} kg (axles ${sim.axles.map((a) => a.mass.toFixed(0)).join(" and ")})`],
     ["Engine", `${ENGINE.name}`],
     ["Peak torque", "283 N·m (209 lb·ft) at 2,000 rpm"],
     ["Gears 1–6", GEARS.map((g) => g.label).join(", ")],
@@ -381,6 +436,7 @@ const degrees = (rad, left, right) => {
 function stateOf() {
   const cs = sim.wheels.map((w) => w.contact);
   const grounded = cs.filter((c) => c.normal > 0);
+  if (sim.overturned) return "Rolled over";
   if (!grounded.length) return "In the air";
   const moving = Math.hypot(sim.v[0], sim.v[2]);
   if (moving < 0.003 && Math.abs(sim.spin) < 0.02 && Math.abs(sim.w[1]) < 0.01 && !sim.wheelTorque) return "At rest";
@@ -392,14 +448,14 @@ function stateOf() {
   return sim.wheelTorque > 0 ? "Gripping" : "Rolling";
 }
 
-let lastStrip = null;
+let lastSection = null;
 let lastGear = null;
 function showReadouts() {
   const [fl, fr, rl, rr] = sim.wheels.map((w) => w.contact);
   const speed = sim.forwardSpeed;
   const arrow = speed > 0.003 ? " ↑" : speed < -0.003 ? " ↓" : "";
   ui.speed.textContent = `${fmt(Math.abs(speed) * 3.6, 0)} km/h${arrow}`;
-  const gear = sim.gear >= 1 ? `${sim.auto ? "Auto" : "Manual"} ${sim.gearName} · ${GEARS[sim.gear - 1].label}` : sim.gear === -1 ? "Reverse" : "Neutral";
+  const gear = sim.gear >= 1 ? `${sim.auto ? "Auto" : "Manual"} ${sim.gearName} · ${GEARS[sim.gear - 1].label}` : sim.gear === -1 ? (sim.auto ? "Auto R · Reverse" : "Reverse") : "Neutral";
   ui.gear.textContent = gear;
   ui.rpm.textContent = `${Math.round(sim.rpm / 10) * 10} rpm${sim.clutch === "slipping" ? " · clutch slipping" : ""}`;
   ui.tach.style.width = `${Math.min(100, (sim.rpm / ENGINE.governor) * 100)}%`;
@@ -429,12 +485,16 @@ function showReadouts() {
     ui.rolling.textContent = newtons([fl, fr, rl, rr].reduce((s, c) => s + resistance(c), 0));
     ui.drag.textContent = newtons(sim.drag);
     ui.torque.textContent = `${Math.round(sim.wheelTorque)} N·m`;
+    // Spring travel past the static ride height: + squashed, - stretched.
+    const mm = (t) => `${t >= 0 ? "+" : ""}${Math.round(t * 1000)}`;
+    const [front, rear] = sim.axles;
+    ui.springsFront.textContent = `${mm(front.travel[0])} · ${mm(front.travel[1])} mm`;
+    ui.springsRear.textContent = `${mm(rear.travel[0])} · ${mm(rear.travel[1])} mm`;
   }
-  const strip = Math.floor((sim.along - CAR.wheelbase / 2) / STRIP); // where the rear tires are
-  if (strip !== lastStrip) {
-    lastStrip = strip;
-    const here = STRIPS[((strip % STRIPS.length) + STRIPS.length) % STRIPS.length];
-    [...ui.surfaces.children].forEach((chip, i) => chip.classList.toggle("current", STRIPS[i] === here));
+  const here = COURSE.locate(sim.along).index;
+  if (here !== lastSection) {
+    lastSection = here;
+    [...ui.surfaces.children].forEach((chip, i) => chip.classList.toggle("current", i === here));
   }
   const gearKey = `${sim.auto}${sim.gear}`;
   if (gearKey !== lastGear) {
@@ -479,10 +539,17 @@ function showLabels() {
 
 // ---------- Loop ----------
 
+let overFor = 0; // how long it's been on its side or roof
 function update(dt) {
+  overFor = sim.overturned ? overFor + dt : 0;
+  if (overFor > 2.5) {
+    overFor = 0;
+    drop();
+  }
   const simDt = view.slow ? dt * SLOW : dt;
   sim.advance(simDt, view.started ? controls() : { throttle: 0, brake: 0, steer: 0 });
   world.draw(sim, simDt, { forces: view.forces, world: settings.world, realDt: dt });
+  sound.update(sim, { inside: world.goal.mode === "driver", rate: view.slow ? SLOW : 1 });
   showReadouts();
   showLabels();
 }
@@ -567,11 +634,15 @@ function start() {
   if (view.started) return;
   view.started = true;
   ui.overlay.hidden = true;
+  sound.start();
   sim.reset(START_X, DROP);
 }
 ui.start.addEventListener("click", start);
 window.addEventListener("resize", () => world.resize());
-document.addEventListener("visibilitychange", () => (resolution.warmup = Math.max(resolution.warmup, 0.5)));
+document.addEventListener("visibilitychange", () => {
+  resolution.warmup = Math.max(resolution.warmup, 0.5);
+  sound.pause(document.hidden);
+});
 
 sim.reset(START_X, 0);
 showSettings();

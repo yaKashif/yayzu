@@ -7,10 +7,10 @@
       content="width=device-width, initial-scale=1, maximum-scale=1, user-scalable=no, viewport-fit=cover"
     />
     <meta name="theme-color" content="#5fa6dc" />
-    <title>Naseeb</title>
+    <title>Naseeb: The Jeep Driver</title>
     <meta
       name="description"
-      content="Drive a 1970 Toyota Land Cruiser FJ40 with real physics: its F six, 3-speed and transfer case, four-wheel drive, every tire gripping and slipping."
+      content="You are Naseeb, a jeep driver in the far north. Prove your old four-wheel-drive jeep on an off-road test ground: logs, rock steps, ditches, side slopes and mud, with real physics."
     />
     <link rel="canonical" href="https://yayzu.com/naseeb/" />
     <link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'%3E%3Ccircle cx='50' cy='50' r='44' fill='%23222'/%3E%3Ccircle cx='50' cy='50' r='26' fill='%23ccd'/%3E%3Ccircle cx='50' cy='50' r='8' fill='%23f2a93b'/%3E%3C/svg%3E" />
@@ -439,6 +439,10 @@
         font-weight: 600;
         text-decoration: none;
       }
+      /* What a driver wouldn't see (forces, slip, loads, fps) shows only in the engineer's view. */
+      body:not(.engineer-view) .engineer {
+        display: none !important;
+      }
       #labels {
         position: fixed;
         inset: 0;
@@ -509,8 +513,8 @@
       <section id="readout" class="panel" aria-live="off">
         <header>
           <h1>Naseeb</h1>
-          <span id="fps" class="fps">– fps</span>
-          <button id="more" class="tiny">Less</button>
+          <span id="fps" class="fps engineer">– fps</span>
+          <button id="more" class="tiny engineer">Less</button>
         </header>
         <dl>
           <dt>Speed</dt>
@@ -521,7 +525,7 @@
           <dd id="r-rpm">650 rpm</dd>
         </dl>
         <div id="tach"><i id="tach-bar"></i></div>
-        <dl>
+        <dl class="engineer">
           <dt>Steering</dt>
           <dd id="r-steer">straight</dd>
           <dt>Slip, front · rear</dt>
@@ -531,7 +535,7 @@
           <dt>Car moved</dt>
           <dd id="r-moved">0 m</dd>
         </dl>
-        <dl id="extra">
+        <dl id="extra" class="engineer">
           <dt>Surface</dt>
           <dd id="r-surface">Dry asphalt</dd>
           <dt>Weight</dt>
@@ -550,19 +554,23 @@
           <dd id="r-drag">–</dd>
           <dt>At the wheels</dt>
           <dd id="r-torque">–</dd>
+          <dt>Springs, front L · R</dt>
+          <dd id="r-springs-front">–</dd>
+          <dt>Springs, rear L · R</dt>
+          <dd id="r-springs-rear">–</dd>
         </dl>
       </section>
       <div class="tools">
-        <button id="t-forces" class="tool on" aria-pressed="true">Forces</button>
         <button id="t-slow" class="tool" aria-pressed="false">Slow-mo</button>
-        <button id="t-view" class="tool">View: Behind</button>
+        <button id="t-sound" class="tool on" aria-pressed="true">Sound</button>
+        <button id="t-view" class="tool">View: Chase</button>
         <button id="t-drop" class="tool">Drop</button>
         <button id="t-settings" class="tool" aria-label="Settings">⚙</button>
       </div>
     </div>
 
     <section id="settings" class="panel" hidden>
-      <h2>FJ40 and world <button id="s-close" class="tiny">Close</button></h2>
+      <h2>Jeep and world <button id="s-close" class="tiny">Close</button></h2>
       <label for="s-drive">Drive</label>
       <select id="s-drive">
         <option value="4x4">4×4: front and rear locked together</option>
@@ -592,7 +600,7 @@
       <button id="s-defaults" class="tiny" style="margin-top: 12px">Back to defaults</button>
     </section>
 
-    <div id="labels"></div>
+    <div id="labels" class="engineer"></div>
 
     <div id="bottom">
       <div id="pads">
@@ -609,20 +617,26 @@
           </div>
         </div>
       </div>
-      <nav id="surfaces" aria-label="Go to a surface"></nav>
+      <nav id="surfaces" aria-label="Go to an obstacle"></nav>
     </div>
 
     <div id="overlay">
       <div class="card panel">
-        <h2>Naseeb</h2>
+        <h2>Naseeb: The Jeep Driver</h2>
         <p>
-          A 1970 Toyota Land Cruiser FJ40, built up from its tires: the ladder frame, the 3.9-litre F
-          six, the gearbox and transfer case, both axles driven. Drive it across asphalt, grass, sand,
-          mud, snow and ice, and watch every tire grip and slip. (Its body comes later.)
+          You are Naseeb, a jeep driver in the far north, where the roads are cut into cliff faces,
+          the bridges are planks over glacier rivers, and a landslide can close the way overnight.
+          You make your living taking people and supplies where no bus will go, in an old
+          army-green jeep: a straight six, three gears in high and low range, four-wheel drive and
+          leaf springs.
+        </p>
+        <p>
+          Before the mountains, prove the jeep and yourself on the test ground: logs, rock steps,
+          axle twisters, ditches, side slopes, a steep climb and a mud pit.
         </p>
         <button id="start">Start</button>
         <a class="more-games" href="../../" target="_top">More games on Yayzu</a>
-        <p id="controls">▲ throttle, ▼ or Space brakes, ◀ ▶ steer (or arrows / WASD). Gears 1–6, 0 automatic, R reverse, N neutral. Backspace drops it, V view, F forces, M slow-mo.</p>
+        <p id="controls">▲ throttle, ▼ or Space brakes, ◀ ▶ steer (or arrows / WASD). Gears 1–6 (1 is Low 1st, for the hard obstacles), 0 automatic, R reverse, N neutral. Backspace drops it, V view, M slow-mo, K sound, F the engineer's view (forces and readouts). The chips at the bottom take you to each obstacle.</p>
       </div>
     </div>
     <script type="module" src="./game.js"></script>

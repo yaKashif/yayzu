@@ -1,9 +1,10 @@
-// Draws Naseeb in 3D with three.js: the car (a ladder frame on four tires), the track of surfaces
-// it drives along, what its tires throw up and leave behind, and the forces on them. The camera
-// follows from behind. The physics uses three.js's axes, so its positions and orientation go
-// straight in.
+// Draws Naseeb in 3D with three.js: the jeep, the off-road course it drives (shaped as the physics
+// has it), what its tires throw up and leave behind, and the forces on them. The camera follows
+// from behind. The physics uses three.js's axes, so its positions and orientation go straight in.
 import * as THREE from "three";
-import { TIRE, CAR, PARTS, WHEELS, SURFACES, STRIPS, STRIP, TRACK_HALF, stripIndexAt } from "./physics.js";
+import { TIRE, CAR, PARTS, WHEELS, SURFACES, TRACK_HALF, COURSE } from "./physics.js";
+import { SHOULDER } from "./ground.js";
+import { buildBody } from "./body.js";
 
 const R = TIRE.radius;
 const RB = TIRE.rimRadius;
@@ -14,6 +15,10 @@ const TREAD_BLOCKS = 34;
 const TRACK_WIDTH = 2 * TRACK_HALF; // metres across the strips of surface
 const TEX = 512; // ground texture pixels a metre; each ground texture is a metre square
 const AHEAD = 70; // metres of track drawn ahead of the tire
+const CHUNK = 8; // metres of course in each piece of ground drawn
+// The default camera: chasing from behind and well above, aimed past the car at the road ahead.
+const CHASE = { mode: "chase", yaw: 0, pitch: 0.23, dist: 10.7 };
+const CHASE_AHEAD = 5; // metres ahead of the car the chase camera looks
 const isTouch = window.matchMedia("(pointer: coarse)").matches;
 // Pixels drawn per CSS pixel at most; main.js lowers it while frames run slow (see adaptResolution).
 const maxPixelRatio = () => Math.min(window.devicePixelRatio || 1, isTouch ? 1.5 : 2);
@@ -30,6 +35,9 @@ const LOOKS = {
   mud: { base: "#553e2c", specks: ["#473225", "#6e523d", "#3b2a1e"], rough: 0.45, bump: 1.5, mark: [0.16, 0.11, 0.07], chip: "#6b4c36", throws: "mud" },
   snow: { base: "#eef3f8", specks: ["#d9e3ee", "#ffffff", "#c9d7e6"], rough: 0.75, bump: 1, mark: [0.62, 0.68, 0.78], chip: "#e6eef6", throws: "snow" },
   ice: { base: "#b8dcee", specks: ["#d8f0fa", "#a6d2e6", "#ffffff"], rough: 0.06, bump: 0, mark: [0.95, 0.97, 1], chip: "#bfe2f1", throws: "frost" },
+  dirt: { base: "#8a6f52", specks: ["#7a6147", "#9c8163", "#6b5440", "#a88d6c"], rough: 0.95, bump: 1.6, mark: [0.34, 0.25, 0.17], chip: "#8a6f52", throws: "dirt" },
+  rock: { base: "#8d8a84", specks: ["#7a7771", "#a3a09a", "#68655f", "#b5b2ab"], rough: 0.85, bump: 2, mark: [0.2, 0.2, 0.2], chip: "#8d8a84", throws: "dust" },
+  wood: { base: "#6b4a2e", specks: ["#5a3d25", "#7d5838", "#4a311d"], rough: 0.9, bump: 2, mark: [0.25, 0.18, 0.12], chip: "#6b4a2e", throws: "dirt" },
 };
 export const surfaceColor = (id) => LOOKS[id].chip;
 
@@ -466,6 +474,7 @@ const PARTICLES = {
   snow: { colour: [0.96, 0.97, 0.99], size: [0.006, 0.015], grow: 0, life: [0.6, 1.2], drag: 1.2, lift: 0, alpha: 1, soft: 0 },
   frost: { colour: [1, 1, 1], size: [0.004, 0.008], grow: 0, life: [0.3, 0.6], drag: 1.5, lift: 0, alpha: 0.9, soft: 0 },
   dust: { colour: [0.78, 0.7, 0.58], size: [0.06, 0.1], grow: 0.2, life: [0.8, 1.2], drag: 3, lift: 0.15, alpha: 0.3, soft: 1, max: 40 },
+  dirt: { colour: [0.42, 0.32, 0.22], size: [0.006, 0.016], grow: 0, life: [0.8, 1.4], drag: 0.6, lift: 0, alpha: 1, soft: 0 },
 };
 // Smoke and dust are big and see-through, so every one costs a lot of pixels; they have their own
 // smaller limits (max), and a puff is never drawn more than a fifth of the screen across.
@@ -535,7 +544,7 @@ class Marks {
     if (this.list.length > MAX_MARKS) this.list.shift();
   }
 
-  write(now = 0) {
+  write(now = 0, ground) {
     const p = this.positions;
     const c = this.colours;
     const w = HALF_WIDTH * 0.95;
@@ -548,8 +557,12 @@ class Marks {
       if (alpha <= 0.01 || len < 1e-6) continue;
       const nx = (-dz / len) * w;
       const nz = (dx / len) * w;
-      const y = 0.0015;
-      p.set([m.x0 - nx, y, m.z0 - nz, m.x0 + nx, y, m.z0 + nz, m.x1 - nx, y, m.z1 - nz, m.x1 + nx, y, m.z1 + nz], n * 12);
+      const corners = [m.x0 - nx, m.z0 - nz, m.x0 + nx, m.z0 + nz, m.x1 - nx, m.z1 - nz, m.x1 + nx, m.z1 + nz];
+      for (let v = 0; v < 4; v++) {
+        const x = corners[v * 2];
+        const z = corners[v * 2 + 1];
+        p.set([x, ground.height(x, z) + 0.006, z], n * 12 + v * 3);
+      }
       for (let v = 0; v < 4; v++) c.set([m.rgb[0], m.rgb[1], m.rgb[2], alpha], n * 16 + v * 4);
       n++;
     }
@@ -622,7 +635,7 @@ class Particles {
     }
   }
 
-  update(dt, g, airiness) {
+  update(dt, g, airiness, ground) {
     for (const p of this.list) {
       const spec = PARTICLES[p.kind];
       p.age += dt;
@@ -635,9 +648,10 @@ class Particles {
       p.y += p.vy * dt;
       p.z += p.vz * dt;
       p.size += spec.grow * dt;
-      if (!spec.lift && p.y < 0.003) {
+      const floor = spec.lift ? -Infinity : ground.height(p.x, p.z) + 0.003;
+      if (p.y < floor) {
         // Bits that land stay a moment, then go.
-        p.y = 0.003;
+        p.y = floor;
         p.vx *= 0.3;
         p.vz *= 0.3;
         p.vy = 0;
@@ -774,109 +788,86 @@ export class World {
     scene.add(sun, sun.target);
     this.sun = sun;
 
-    // Track strips, reused as the tire moves along.
-    this.groundTextures = SURFACES.map(() => null);
+    // The course's ground, in 8 m pieces, each built the first time it's needed and placed wherever
+    // it comes round (see updateTrack).
     this.groundMaterials = SURFACES.map(() => null);
-    this.strips = [];
-    // Textured by position across the track, so the two halves of a strip meet without a seam.
-    const halfGeo = (side) => {
-      const geo = new THREE.PlaneGeometry(TRACK_HALF, STRIP).rotateX(-Math.PI / 2);
-      const uv = geo.attributes.uv;
-      const pos = geo.attributes.position;
-      for (let i = 0; i < uv.count; i++) uv.setXY(i, pos.getX(i) + (side * TRACK_HALF) / 2, uv.getY(i) * STRIP);
-      return geo;
-    };
-    const halves = [halfGeo(-1), halfGeo(1)];
-    const stripCount = Math.ceil((AHEAD + BEHIND) / STRIP) + 2;
-    for (let i = 0; i < stripCount; i++) {
-      const pair = [-1, 1].map((side, k) => {
-        const mesh = new THREE.Mesh(halves[k], this.groundMaterial(0));
-        mesh.position.x = (side * TRACK_HALF) / 2;
-        mesh.receiveShadow = true;
-        scene.add(mesh);
-        return mesh;
-      });
-      this.strips.push(pair);
-    }
+    this.chunks = new Map();
+    this.shown = new Set();
 
-    // The field either side, and kerbs along the track's edges striped every metre.
+    // The field either side of the course, level, beyond its shoulders.
     const fieldCanvas = groundCanvas("grass", 99);
     const fieldTex = new THREE.CanvasTexture(fieldCanvas);
     fieldTex.wrapS = fieldTex.wrapT = THREE.RepeatWrapping;
     fieldTex.colorSpace = THREE.SRGBColorSpace;
-    fieldTex.repeat.set(200, 200);
     fieldTex.anisotropy = this.maxAniso;
     this.fieldMaterial = new THREE.MeshLambertMaterial({ map: fieldTex, color: 0x9fb98a });
-    // Either side of the track only, so no pixel of the field is drawn under it.
+    // The course's grass verges, the same grass to the same scale (one repeat every 2 m).
+    const vergeTex = fieldTex.clone();
+    vergeTex.repeat.set(0.5, 0.5);
+    this.vergeMaterial = new THREE.MeshLambertMaterial({ map: vergeTex, color: 0x9fb98a });
+    // Either side of the course only, so no pixel of the field is drawn under it.
     const FIELD = 200;
-    const edge = TRACK_WIDTH / 2 + 0.14;
-    const fieldGeo = new THREE.PlaneGeometry(FIELD - edge, 400).rotateX(-Math.PI / 2);
+    const fieldGeo = new THREE.PlaneGeometry(FIELD - SHOULDER, 400).rotateX(-Math.PI / 2);
     const fuv = fieldGeo.attributes.uv;
     const fpos = fieldGeo.attributes.position;
     this.field = new THREE.Group();
     for (const side of [-1, 1]) {
-      // Texture by world position, one repeat every 2 m, so both halves line up with the grid.
+      // Texture by world position, one repeat every 2 m, so both halves line up with the course.
       const geo = fieldGeo.clone();
-      const x0 = side * (edge + (FIELD - edge) / 2);
+      const x0 = side * (SHOULDER + (FIELD - SHOULDER) / 2);
       for (let i = 0; i < fuv.count; i++) geo.attributes.uv.setXY(i, (fpos.getX(i) + x0) / 2, -fpos.getZ(i) / 2);
       const half = new THREE.Mesh(geo, this.fieldMaterial);
       half.position.set(x0, -0.004, 0);
+      half.receiveShadow = true;
       this.field.add(half);
     }
-    fieldTex.repeat.set(1, 1);
     scene.add(this.field);
 
-    const kerbCanvas = makeCanvas(64, 128);
-    const kg = kerbCanvas.getContext("2d");
-    kg.fillStyle = "#e9e6df";
-    kg.fillRect(0, 0, 64, 128);
-    kg.fillStyle = "#c8432f";
-    kg.fillRect(0, 0, 64, 64);
-    const kerbTex = new THREE.CanvasTexture(kerbCanvas);
-    kerbTex.wrapS = kerbTex.wrapT = THREE.RepeatWrapping;
-    kerbTex.colorSpace = THREE.SRGBColorSpace;
-    this.kerbs = [];
-    const KERB_LENGTH = 120;
-    for (const side of [-1, 1]) {
-      const geo = new THREE.BoxGeometry(0.14, 0.04, KERB_LENGTH);
-      // A red and a white stripe every two metres along the kerb, on every face.
-      const uvs = geo.attributes.uv;
-      const kpos = geo.attributes.position;
-      for (let i = 0; i < uvs.count; i++) uvs.setXY(i, 0.5, kpos.getZ(i) / 2);
-      const kerb = new THREE.Mesh(geo, new THREE.MeshStandardMaterial({ map: kerbTex, roughness: 0.7 }));
-      kerb.position.set(side * (TRACK_WIDTH / 2 + 0.07), 0.02, 0);
-      kerb.receiveShadow = true;
-      scene.add(kerb);
-      this.kerbs.push(kerb);
+    // Logs: bark along them, end grain on their ends. Boulders: weathered stone, faceted.
+    const bark = makeCanvas(256, 256);
+    const bg = bark.getContext("2d");
+    const brand = rng(31);
+    bg.fillStyle = "#5e4128";
+    bg.fillRect(0, 0, 256, 256);
+    for (let i = 0; i < 260; i++) {
+      const x = brand() * 256;
+      bg.strokeStyle = brand() < 0.5 ? "rgba(30,18,8,0.55)" : "rgba(140,110,80,0.35)";
+      bg.lineWidth = 1 + brand() * 3;
+      bg.beginPath();
+      bg.moveTo(x, 0);
+      bg.bezierCurveTo(x + (brand() - 0.5) * 20, 85, x + (brand() - 0.5) * 20, 170, x + (brand() - 0.5) * 10, 256);
+      bg.stroke();
     }
-    this.kerbLength = KERB_LENGTH;
-
-    // Metre numbers painted along the left edge of the track.
-    this.numbers = [];
-    for (let i = 0; i < 16; i++) {
-      const c = makeCanvas(128, 64);
-      const tex = new THREE.CanvasTexture(c);
-      tex.colorSpace = THREE.SRGBColorSpace;
-      const mesh = new THREE.Mesh(
-        new THREE.PlaneGeometry(0.36, 0.18).rotateX(-Math.PI / 2),
-        new THREE.MeshStandardMaterial({ map: tex, transparent: true, roughness: 0.8, depthWrite: false, polygonOffset: true, polygonOffsetFactor: -1 }),
-      );
-      mesh.position.y = 0.002;
-      scene.add(mesh);
-      this.numbers.push({ mesh, canvas: c, tex, value: null });
+    const barkTex = new THREE.CanvasTexture(bark);
+    barkTex.wrapS = barkTex.wrapT = THREE.RepeatWrapping;
+    barkTex.repeat.set(2, 3);
+    barkTex.colorSpace = THREE.SRGBColorSpace;
+    barkTex.anisotropy = this.maxAniso;
+    const ends = makeCanvas(128, 128);
+    const eg = ends.getContext("2d");
+    eg.fillStyle = "#c9a675";
+    eg.fillRect(0, 0, 128, 128);
+    for (let r = 4; r < 64; r += 5) {
+      eg.strokeStyle = r > 56 ? "#4a311d" : "rgba(120,85,45,0.6)";
+      eg.lineWidth = r > 56 ? 8 : 1.5;
+      eg.beginPath();
+      eg.arc(64, 64, r, 0, Math.PI * 2);
+      eg.stroke();
     }
-    // A tick across the edge of the track every half metre.
-    this.ticks = new THREE.InstancedMesh(
-      new THREE.PlaneGeometry(0.22, 0.025).rotateX(-Math.PI / 2),
-      new THREE.MeshStandardMaterial({ color: 0xf4f1ea, roughness: 0.8, polygonOffset: true, polygonOffsetFactor: -1, transparent: true, opacity: 0.85 }),
-      2 * 2 * (AHEAD + BEHIND + 2),
-    );
-    this.tickCapacity = this.ticks.count;
-    this.ticks.frustumCulled = false;
-    scene.add(this.ticks);
+    const endTex = new THREE.CanvasTexture(ends);
+    endTex.colorSpace = THREE.SRGBColorSpace;
+    this.logMaterials = [
+      new THREE.MeshStandardMaterial({ map: barkTex, bumpMap: barkTex, bumpScale: 2, roughness: 0.95 }),
+      new THREE.MeshStandardMaterial({ map: endTex, roughness: 0.8 }),
+      new THREE.MeshStandardMaterial({ map: endTex, roughness: 0.8 }),
+    ];
+    const stoneTex = new THREE.CanvasTexture(groundCanvas("rock", 1977));
+    stoneTex.wrapS = stoneTex.wrapT = THREE.RepeatWrapping;
+    stoneTex.colorSpace = THREE.SRGBColorSpace;
+    this.rockMaterial = new THREE.MeshStandardMaterial({ map: stoneTex, roughness: 0.88, flatShading: true });
 
-    // A sign at the start of every strip naming the surface.
-    this.signTextures = STRIPS.map(() => null);
+    // A sign at the start of each obstacle naming it.
+    this.signTextures = COURSE.sections.map(() => null);
     this.signs = [];
     const postMat = new THREE.MeshStandardMaterial({ color: 0x7a5a3a, roughness: 0.9 });
     for (let i = 0; i < 6; i++) {
@@ -888,9 +879,9 @@ export class World {
       const back = new THREE.Mesh(new THREE.BoxGeometry(1.14, 0.54, 0.04), postMat);
       back.position.set(0, 1.25, 0);
       group.add(post, back, board);
-      group.position.x = TRACK_WIDTH / 2 + 1.4;
+      group.position.x = TRACK_HALF + 1.4;
       scene.add(group);
-      this.signs.push({ group, board, strip: null });
+      this.signs.push({ group, board, section: null });
     }
 
     // Trees out in the field, in two blocks that leapfrog each other as the tire moves.
@@ -908,7 +899,7 @@ export class World {
       const tm = new THREE.Matrix4();
       for (let i = 0; i < count; i++) {
         const side = i % 2 ? 1 : -1;
-        const x = side * (5 + trand() * 40);
+        const x = side * (SHOULDER + 1 + trand() * 40);
         const z = -trand() * TREE_BLOCK;
         const s = 0.7 + trand() * 0.8;
         tm.compose(new THREE.Vector3(x, 0, z), new THREE.Quaternion().setFromEuler(new THREE.Euler(0, trand() * 6, 0)), new THREE.Vector3(s, s * (0.8 + trand() * 0.5), s));
@@ -922,24 +913,29 @@ export class World {
     }
     this.treeBlock = TREE_BLOCK;
 
-    // The car. Its parts are placed in the car's own axes from the middle between the axles at hub
-    // height; the physics places the car by its centre of mass, so they sit offset from that.
+    // The car. The body and frame are placed by the sprung mass's centre, their parts in the car's
+    // own axes from the middle between the axles at hub height; each axle, with its wheels and
+    // springs, is placed where the physics has it.
     this.car = new THREE.Group();
     this.frame = new THREE.Group();
     this.car.add(this.frame);
     scene.add(this.car);
+    this.axleGroups = [new THREE.Group(), new THREE.Group()];
+    for (const g of this.axleGroups) scene.add(g);
     this.buildFrame();
-
     // Four tires. The right ones' spokes face right; the left ones are the same tire turned round,
     // so their spokes face left. Each turns on its own and the front ones steer.
     const original = buildWheel(this.maxAniso).wheel;
+    const body = buildBody({ maxAniso: this.maxAniso, makeWheel: () => original.clone() });
+    this.frame.add(body.group);
+    this.steeringWheel = body.steeringWheel;
     this.wheels = WHEELS.map((w, i) => {
       const wheel = i ? original.clone() : original;
       const blur = wheel.getObjectByName("blur");
       blur.material = blur.material.clone(); // each blurs by its own spin
       wheel.rotation.order = "YXZ"; // steer, then spin about the steered axle
-      wheel.position.set(...w.at);
-      this.frame.add(wheel);
+      wheel.position.set(w.at[0], 0, 0); // across its axle
+      this.axleGroups[w.front ? 0 : 1].add(wheel);
       return { wheel, tire: wheel.getObjectByName("tire"), blur };
     });
 
@@ -963,11 +959,14 @@ export class World {
     this.torque.add(this.torqueArc, this.torqueHead);
     scene.add(this.torque);
 
-    // Camera: orbits the car at yaw (0 is straight behind it), pitch and distance.
-    this.view = { yaw: 0.35, pitch: 0.28, dist: 7 };
+    // Camera: chase, driver or orbit (see updateCamera).
+    this.view = { ...CHASE };
+    this.goal = { ...CHASE };
     this.heading = 0;
-    this.goal = { ...this.view };
     this.lookY = R;
+    this.fov = 52;
+    this.lastOrbit = -Infinity;
+    this.chasePosition = null;
     this.world = null;
     this.labelPoints = {};
     this.pixelRatio = maxPixelRatio();
@@ -1001,32 +1000,126 @@ export class World {
 
   signTexture(index) {
     if (!this.signTextures[index]) {
-      const s = STRIPS[index];
+      const s = COURSE.sections[index];
       const c = makeCanvas(512, 232);
       const g = c.getContext("2d");
       g.fillStyle = "#f4efe4";
       g.fillRect(0, 0, 512, 232);
-      g.fillStyle = surfaceColor(s.left.id);
-      g.fillRect(0, 0, 256, 26);
-      g.fillStyle = surfaceColor(s.right.id);
-      g.fillRect(256, 0, 256, 26);
+      g.fillStyle = surfaceColor(s.look);
+      g.fillRect(0, 0, 512, 26);
       g.fillStyle = "#2a2622";
       g.textAlign = "center";
-      g.font = `800 66px system-ui, -apple-system, "Segoe UI", Roboto, sans-serif`;
-      g.fillText(s.name, 256, 112);
+      g.font = `800 62px system-ui, -apple-system, "Segoe UI", Roboto, sans-serif`;
+      g.fillText(s.name, 256, 112, 480);
       g.fillStyle = "#6a6158";
-      g.font = `600 36px system-ui, -apple-system, "Segoe UI", Roboto, sans-serif`;
-      const sub =
-        s.left === s.right
-          ? `grip ${s.left.peak.toFixed(2)} · sliding ${s.left.slide.toFixed(2)}`
-          : `grip ${s.left.peak.toFixed(2)} left · ${s.right.peak.toFixed(2)} right`;
-      g.fillText(sub, 256, 178);
+      g.font = `600 34px system-ui, -apple-system, "Segoe UI", Roboto, sans-serif`;
+      g.fillText(s.note, 256, 178, 480);
       const tex = new THREE.CanvasTexture(c);
       tex.colorSpace = THREE.SRGBColorSpace;
       tex.anisotropy = this.maxAniso;
       this.signTextures[index] = tex;
     }
     return this.signTextures[index];
+  }
+
+  // One 8 m piece of the course, k pieces from its start: the ground shaped as the physics has it
+  // (but for the logs and boulders, drawn on it), each cell in what it's made of.
+  chunk(k) {
+    if (this.chunks.has(k)) return this.chunks.get(k);
+    const group = new THREE.Group();
+    const a0 = k * CHUNK;
+    const sections = COURSE.sections.filter((s) => s.start < a0 + CHUNK && s.start + s.length > a0);
+    // Finer where there are sharp edges: steps, logs, boulders.
+    const step = sections.some((s) => s.fine) ? 0.04 : 0.1;
+    const rows = Math.round(CHUNK / step);
+    const xs = [];
+    const lane = TRACK_HALF + 0.5;
+    const outer = Math.ceil((SHOULDER - lane) / 0.4);
+    for (let i = 0; i < outer; i++) xs.push(-SHOULDER + ((SHOULDER - lane) * i) / outer);
+    const inner = Math.round((2 * lane) / 0.1);
+    for (let i = 0; i <= inner; i++) xs.push(-lane + (2 * lane * i) / inner);
+    for (let i = outer - 1; i >= 0; i--) xs.push(SHOULDER - ((SHOULDER - lane) * i) / outer);
+    const cols = xs.length;
+    const shape = (x, a) => {
+      const { section, u } = COURSE.locate(a);
+      return (section.drawn || section.height)(x, u);
+    };
+    // Heights, a row either side spare for the normals.
+    const heights = [];
+    for (let r = -1; r <= rows + 1; r++) heights.push(xs.map((x) => shape(x, a0 + r * step)));
+    const position = new Float32Array(cols * (rows + 1) * 3);
+    const normal = new Float32Array(cols * (rows + 1) * 3);
+    const uv = new Float32Array(cols * (rows + 1) * 2);
+    for (let r = 0; r <= rows; r++) {
+      const h = heights[r + 1];
+      for (let c = 0; c < cols; c++) {
+        const i = r * cols + c;
+        const l = Math.max(0, c - 1);
+        const rt = Math.min(cols - 1, c + 1);
+        const dx = (h[rt] - h[l]) / (xs[rt] - xs[l]);
+        const da = (heights[r + 2][c] - heights[r][c]) / (2 * step); // up per metre along
+        const n = new THREE.Vector3(-dx, 1, da).normalize();
+        position.set([xs[c], h[c], -r * step], i * 3);
+        normal.set([n.x, n.y, n.z], i * 3);
+        uv.set([xs[c], a0 + r * step], i * 2);
+      }
+    }
+    // Each cell's two triangles, sorted by what the ground is made of there.
+    const kinds = [];
+    const lists = [];
+    for (let r = 0; r < rows; r++) {
+      for (let c = 0; c < cols - 1; c++) {
+        let id = COURSE.surface((xs[c] + xs[c + 1]) / 2, -(a0 + (r + 0.5) * step)).id;
+        if (id === "wood" || id === "rock") id = "dirt"; // under a log or a boulder
+        let m = kinds.indexOf(id);
+        if (m < 0) {
+          m = kinds.push(id) - 1;
+          lists.push([]);
+        }
+        const i = r * cols + c;
+        lists[m].push(i, i + 1, i + cols, i + 1, i + cols + 1, i + cols);
+      }
+    }
+    const geo = new THREE.BufferGeometry();
+    geo.setAttribute("position", new THREE.BufferAttribute(position, 3));
+    geo.setAttribute("normal", new THREE.BufferAttribute(normal, 3));
+    geo.setAttribute("uv", new THREE.BufferAttribute(uv, 2));
+    const index = [];
+    lists.forEach((list, m) => {
+      geo.addGroup(index.length, list.length, m);
+      for (const v of list) index.push(v);
+    });
+    geo.setIndex(index);
+    const materials = kinds.map((id) => (id === "grass" ? this.vergeMaterial : this.groundMaterial(SURFACES.findIndex((s) => s.id === id))));
+    const ground = new THREE.Mesh(geo, materials);
+    ground.receiveShadow = true;
+    group.add(ground);
+
+    // The logs and boulders whose middles are on this piece.
+    for (const s of sections) {
+      for (const log of s.logs || []) {
+        const at = s.start + log.u;
+        if (at < a0 || at >= a0 + CHUNK) continue;
+        const mesh = new THREE.Mesh(new THREE.CylinderGeometry(log.r, log.r, 5.4, 22).rotateZ(Math.PI / 2), this.logMaterials);
+        mesh.position.set(0, 0.8 * log.r, -(at - a0));
+        mesh.rotation.y = log.angle;
+        mesh.castShadow = mesh.receiveShadow = true;
+        group.add(mesh);
+      }
+      for (const rock of s.rocks || []) {
+        const at = s.start + rock.u;
+        if (at < a0 || at >= a0 + CHUNK) continue;
+        const mesh = new THREE.Mesh(new THREE.SphereGeometry(1, 9, 5, 0, Math.PI * 2, 0, Math.PI / 2), this.rockMaterial);
+        mesh.scale.set(rock.rx, rock.h, rock.ru);
+        mesh.position.set(rock.x, 0, -(at - a0));
+        mesh.castShadow = mesh.receiveShadow = true;
+        group.add(mesh);
+      }
+    }
+    group.visible = false;
+    this.scene.add(group);
+    this.chunks.set(k, group);
+    return group;
   }
 
   setWorld(name) {
@@ -1043,6 +1136,7 @@ export class World {
     this.hemi.color.set(w.horizon);
     this.hemi.groundColor.set(0x8a8478); // light bounced off the ground, kept neutral so metal isn't tinted
     this.fieldMaterial.color.set(name === "earth" ? 0x9fb98a : w.ground);
+    this.vergeMaterial.color.copy(this.fieldMaterial.color);
     for (const g of this.treeBlocks) g.visible = name === "earth";
     // Reflections come from this sky.
     const pmrem = new THREE.PMREMGenerator(this.renderer);
@@ -1070,20 +1164,29 @@ export class World {
     this.camera.updateProjectionMatrix();
     this.W = w;
     this.H = h;
-    this.particles.material.uniforms.scale.value = (h * this.renderer.getPixelRatio()) / (2 * Math.tan((this.camera.fov * Math.PI) / 360));
-    this.particles.material.uniforms.biggest.value = 0.2 * h * this.renderer.getPixelRatio();
+    this.updatePointScale();
+  }
+
+  // How big a particle a metre across looks, for the current height and field of view.
+  updatePointScale() {
+    const h = this.H * this.renderer.getPixelRatio();
+    this.particles.material.uniforms.scale.value = h / (2 * Math.tan((this.camera.fov * Math.PI) / 360));
+    this.particles.material.uniforms.biggest.value = 0.2 * h;
   }
 
   // Drag to look around; the wheel or pinch to come closer or go further.
   orbit(dx, dy) {
     this.goal.yaw -= dx * 0.008;
-    this.goal.pitch = Math.min(1.35, Math.max(0.04, this.goal.pitch + dy * 0.006));
+    this.goal.pitch = Math.min(1.35, Math.max(this.goal.mode === "driver" ? -0.6 : 0.04, this.goal.pitch + dy * 0.006));
+    this.lastOrbit = performance.now();
   }
   zoom(factor) {
-    this.goal.dist = Math.min(8, Math.max(0.7, this.goal.dist * factor));
+    this.goal.dist = Math.min(22, Math.max(2.5, this.goal.dist * factor));
   }
   setView(view) {
     Object.assign(this.goal, view);
+    this.view.mode = this.goal.mode;
+    this.chasePosition = null;
   }
 
   clearEffects() {
@@ -1092,11 +1195,12 @@ export class World {
     this.lastPoints = WHEELS.map(() => null);
   }
 
-  // The FJ40's rolling chassis: the ladder frame (two C-channel rails and the cross members joining
-  // them), leaf springs under the rails at each axle, the front and rear axles with their
-  // differentials, the steering knuckles and tie rod, the F six with its radiator, the gearbox and
-  // transfer case, the driveshafts, fuel tank and battery. The boxes are the ones the physics weighs.
-  // The body isn't drawn yet, though its weight is in.
+  // The FJ40's chassis. On the frame (sprung, moving with the body): the ladder frame (two
+  // C-channel rails and the cross members joining them), the F six with its radiator, the gearbox
+  // and transfer case, fuel tank, battery, the steering box and the spring hangers. On each axle
+  // (unsprung, moving with it): the housing and differential, the leaf springs clamped to it, and
+  // at the front the Birfield knuckles, steering arms and tie rod. The driveshafts reach between.
+  // The boxes are the ones the physics weighs.
   buildFrame() {
     const mat = (color, metalness, roughness) => new THREE.MeshStandardMaterial({ color, metalness, roughness });
     const frame = mat(0x1d2023, 0.5, 0.5); // chassis black
@@ -1116,9 +1220,10 @@ export class World {
     };
     const box = (w, h, l) => new THREE.BoxGeometry(w, h, l);
     const halfBase = CAR.wheelbase / 2;
+    const [frontAxle, rearAxle] = this.axleGroups;
+    const driver = CAR.rightHandDrive ? 1 : -1;
 
     for (const part of PARTS) {
-      if (!part.drawn) continue;
       const [x, y, z] = part.at;
       const [w, h, l] = part.size;
       if (part.name === "frame rail") {
@@ -1130,19 +1235,17 @@ export class World {
       } else if (part.name === "cross member" || part.name === "rear cross member") {
         add(box(w, h, l), frame, x, y, z);
       } else if (part.name === "front bumper") {
-        add(box(w, h, l), white, x, y, z);
+        add(box(w, h, l), black, x, y, z);
       } else if (part.name === "front axle" || part.name === "rear axle") {
         // Axle tubes, the differential's round housing (the front one offset to the right, as on
-        // the FJ40) with its pinion nose toward the transfer case.
+        // the FJ40) with its pinion nose toward the transfer case; placed about the axle's middle.
         const front = part.name === "front axle";
-        add(new THREE.CylinderGeometry(0.04, 0.04, w, 20).rotateZ(Math.PI / 2), cast, x, y, z);
+        const group = front ? frontAxle : rearAxle;
+        add(new THREE.CylinderGeometry(0.04, 0.04, w, 20).rotateZ(Math.PI / 2), cast, 0, y, 0, group);
         const dx = front ? 0.12 : 0;
-        add(new THREE.SphereGeometry(0.14, 24, 16), cast, dx, y, z);
-        add(new THREE.CylinderGeometry(0.055, 0.07, 0.18, 18).rotateX(Math.PI / 2), cast, dx, y + 0.01, z + (front ? 0.15 : -0.15));
-        if (front) {
-          // Birfield knuckle balls at the ends.
-          for (const s of [-1, 1]) add(new THREE.SphereGeometry(0.085, 20, 14), cast, s * (w / 2 + 0.02), y, z);
-        }
+        add(new THREE.SphereGeometry(0.14, 24, 16), cast, dx, y, 0, group);
+        add(new THREE.CylinderGeometry(0.055, 0.07, 0.18, 18).rotateX(Math.PI / 2), cast, dx, y + 0.01, front ? 0.15 : -0.15, group);
+        if (front) for (const s of [-1, 1]) add(new THREE.SphereGeometry(0.085, 20, 14), cast, s * (w / 2 + 0.02), y, 0, group);
       } else if (part.name === "engine") {
         // The block, the head and its rocker cover, the oil pan, and the fan and pulley at the front.
         add(box(0.36, 0.38, 0.86), engineBlue, x, y - 0.06, z);
@@ -1150,8 +1253,7 @@ export class World {
         add(box(0.2, 0.07, 0.8), chrome, x + 0.02, y + 0.28, z);
         add(box(0.3, 0.14, 0.7), black, x, y - 0.31, z + 0.05);
         add(new THREE.CylinderGeometry(0.06, 0.06, 0.05, 20).rotateX(Math.PI / 2), steel, x, y - 0.02, z - 0.45);
-        const fan = add(new THREE.CylinderGeometry(0.2, 0.2, 0.01, 6).rotateX(Math.PI / 2), black, x, y + 0.05, z - 0.52);
-        this.fan = fan;
+        this.fan = add(new THREE.CylinderGeometry(0.2, 0.2, 0.01, 6).rotateX(Math.PI / 2), black, x, y + 0.05, z - 0.52);
         // The air cleaner, a round can on top, and the exhaust manifold down the left.
         add(new THREE.CylinderGeometry(0.15, 0.15, 0.09, 28), black, x - 0.05, y + 0.38, z + 0.05);
         add(box(0.05, 0.06, 0.7), cast, x - 0.21, y + 0.03, z);
@@ -1160,16 +1262,17 @@ export class World {
         add(new THREE.CylinderGeometry(0.15, 0.2, 0.2, 24).rotateX(Math.PI / 2), cast, x, y + 0.05, z - 0.25);
         add(box(0.22, 0.24, 0.32), cast, x, y + 0.02, z + 0.02);
         add(box(0.34, 0.26, 0.18), cast, x + 0.04, y - 0.04, z + 0.24);
-        // Gear lever and the transfer lever beside it.
-        add(new THREE.CylinderGeometry(0.008, 0.01, 0.42, 8), chrome, x, y + 0.32, z - 0.02);
-        add(new THREE.CylinderGeometry(0.007, 0.008, 0.32, 8), chrome, x + 0.08, y + 0.24, z + 0.22);
+        // Gear lever and the transfer lever beside it, up through the floor.
+        add(new THREE.CylinderGeometry(0.008, 0.01, 0.62, 8), chrome, x, y + 0.42, z - 0.02);
+        add(new THREE.SphereGeometry(0.025, 12, 8), black, x, y + 0.73, z - 0.02);
+        add(new THREE.CylinderGeometry(0.007, 0.008, 0.5, 8), chrome, x + 0.08, y + 0.33, z + 0.22);
+        add(new THREE.SphereGeometry(0.02, 12, 8), black, x + 0.08, y + 0.58, z + 0.22);
       } else if (part.name === "radiator") {
         add(box(w, h, l), black, x, y, z);
         add(box(w + 0.04, 0.03, l + 0.02), steel, x, y + h / 2, z);
         add(box(w + 0.04, 0.03, l + 0.02), steel, x, y - h / 2, z);
       } else if (part.name === "fuel tank") {
         add(box(w, h, l), black, x, y, z);
-        add(new THREE.CylinderGeometry(0.03, 0.03, 0.04, 16), chrome, x + 0.15, y + h / 2 + 0.02, z - 0.2);
       } else if (part.name === "battery") {
         add(box(w, h, l), black, x, y, z);
         add(new THREE.CylinderGeometry(0.012, 0.012, 0.025, 10), mat(0xc0392b, 0.3, 0.5), x - 0.07, y + h / 2 + 0.01, z);
@@ -1177,8 +1280,8 @@ export class World {
       }
     }
 
-    // Leaf springs: a stack of curved steel leaves under each rail at each axle, with hangers up
-    // to the rail. (Only drawn: the tires are the only springs the physics has yet.)
+    // Leaf springs: a stack of curved steel leaves clamped to each axle under each frame rail,
+    // reaching fore and aft to hangers on the rail.
     const leaves = new THREE.Group();
     for (let k = 0; k < 4; k++) {
       const len = 1.15 - k * 0.2;
@@ -1189,57 +1292,54 @@ export class World {
       leaf.castShadow = true;
       leaves.add(leaf);
     }
-    for (const z of [-halfBase, halfBase]) {
+    for (const [i, z] of [[0, -halfBase], [1, halfBase]]) {
       for (const side of [-1, 1]) {
         const set = leaves.clone();
-        set.position.set(side * 0.42, 0.06, z);
-        this.frame.add(set);
-        for (const end of [-0.56, 0.56]) add(box(0.03, 0.07, 0.03), frame, side * 0.42, 0.1, z + end);
-        add(box(0.06, 0.05, 0.1), steel, side * 0.42, 0.04, z); // U-bolt plate on the axle
+        set.position.set(side * 0.42, 0.06, 0);
+        this.axleGroups[i].add(set);
+        add(box(0.06, 0.05, 0.1), steel, side * 0.42, 0.045, 0, this.axleGroups[i]); // U-bolt plate
+        for (const end of [-0.56, 0.56]) add(box(0.03, 0.08, 0.03), frame, side * 0.42, 0.09, z + end);
+        // The shock absorber, from the axle up to the frame.
+        add(new THREE.CylinderGeometry(0.025, 0.025, 0.3, 10), black, side * 0.5, 0.15, 0.12 * (i ? -1 : 1), this.axleGroups[i]);
       }
     }
 
     // Steering: a knuckle at each end of the front axle turns with its tire; their arms reach back
-    // to a tie rod across, which slides as they turn. The steering box sits on the left rail.
+    // to a tie rod across, which slides as they turn. The steering box sits on the driver's rail.
     const knuckleX = CAR.frontTrack / 2 - 0.13;
     this.knuckles = [-1, 1].map((side) => {
       const knuckle = new THREE.Group();
-      knuckle.position.set(side * knuckleX, 0, -halfBase);
+      knuckle.position.set(side * knuckleX, 0, 0);
       const arm = new THREE.Mesh(box(0.03, 0.03, 0.2), steel);
       arm.position.set(-side * 0.03, -0.05, 0.1);
       arm.castShadow = true;
       knuckle.add(arm);
-      this.frame.add(knuckle);
+      frontAxle.add(knuckle);
       return knuckle;
     });
-    this.tieRod = add(new THREE.CylinderGeometry(0.014, 0.014, 1, 10).rotateZ(Math.PI / 2), steel, 0, -0.05, -halfBase + 0.2);
-    add(box(0.12, 0.12, 0.15), cast, -0.5, 0.12, -halfBase - 0.1);
+    this.tieRod = add(new THREE.CylinderGeometry(0.014, 0.014, 1, 10).rotateZ(Math.PI / 2), steel, 0, -0.05, 0.2, frontAxle);
+    add(box(0.12, 0.12, 0.15), cast, driver * 0.5, 0.12, -halfBase - 0.1);
 
-    // Driveshafts from the transfer case to each differential, turning with the drivetrain.
+    // Driveshafts from the transfer case to each differential's nose, turning with the drivetrain.
+    // They're stretched between the frame and the axle each frame (see draw).
     const shaft = (from, to) => {
       const group = new THREE.Group();
-      group.position.copy(from);
-      group.lookAt(to.clone().add(this.frame.position));
-      const length = from.distanceTo(to);
-      const tube = new THREE.Mesh(new THREE.CylinderGeometry(0.032, 0.032, length - 0.1, 14).rotateX(Math.PI / 2), steel);
-      tube.position.z = length / 2;
-      tube.castShadow = true;
       const spinner = new THREE.Group();
-      spinner.add(tube);
-      // U-joint yokes at each end, so the turning shows.
-      for (const end of [0.04, length - 0.04]) {
-        const yoke = new THREE.Mesh(box(0.09, 0.025, 0.05), cast);
-        yoke.position.z = end;
-        spinner.add(yoke);
-      }
       group.add(spinner);
-      this.frame.add(group);
-      return spinner;
+      const tube = new THREE.Mesh(new THREE.CylinderGeometry(0.032, 0.032, 1, 14).rotateX(Math.PI / 2).translate(0, 0, 0.5), steel);
+      tube.castShadow = true;
+      spinner.add(tube);
+      const yokes = [0, 1].map(() => {
+        const yoke = new THREE.Mesh(box(0.09, 0.025, 0.05), cast);
+        spinner.add(yoke);
+        return yoke;
+      });
+      this.scene.add(group);
+      return { group, spinner, tube, yokes, from, to };
     };
-    // (lookAt works in world space; the frame isn't offset yet, so its local space is the world's.)
     this.shafts = [
-      shaft(new THREE.Vector3(0.12, -0.02, 0.18), new THREE.Vector3(0.12, 0.01, -halfBase + 0.24)),
-      shaft(new THREE.Vector3(0.04, -0.02, 0.34), new THREE.Vector3(0, 0.01, halfBase - 0.24)),
+      shaft(new THREE.Vector3(0.12, -0.02, 0.18), [0, new THREE.Vector3(0.12, 0.01, 0.24)]),
+      shaft(new THREE.Vector3(0.04, -0.02, 0.34), [1, new THREE.Vector3(0, 0.01, -0.24)]),
     ];
   }
 
@@ -1247,11 +1347,25 @@ export class World {
   draw(sim, dt, opts) {
     this.setWorld(opts.world);
     const [px, py, pz] = sim.p;
+    const rdt = opts.realDt || dt;
 
-    // The car: placed by its centre of mass, its parts offset from that.
+    // The body: placed by its centre of mass, its parts offset from that.
     this.car.position.set(px, py, pz);
     this.car.quaternion.set(sim.q[1], sim.q[2], sim.q[3], sim.q[0]);
     this.frame.position.set(-sim.centre[0], -sim.centre[1], -sim.centre[2]);
+    this.car.updateMatrixWorld();
+    // The axles, each where the physics has it: its middle, its beam across, up from it.
+    const basis = new THREE.Matrix4();
+    sim.axles.forEach((a, i) => {
+      const f = sim.axleFrame(a);
+      const beam = new THREE.Vector3(...f.beam);
+      const up = new THREE.Vector3(...f.up);
+      basis.makeBasis(beam, up, beam.clone().cross(up));
+      const group = this.axleGroups[i];
+      group.position.set(...f.middle);
+      group.quaternion.setFromRotationMatrix(basis);
+      group.updateMatrixWorld();
+    });
     sim.wheels.forEach((w, i) => {
       const view = this.wheels[i];
       // Turned round on the left, so the spin there is the other way about its own axle.
@@ -1264,112 +1378,140 @@ export class World {
     const [fl, fr] = sim.wheels;
     this.knuckles[0].rotation.y = fl.steer;
     this.knuckles[1].rotation.y = fr.steer;
-    const armEnd = (k, side) => {
-      const p = new THREE.Vector3(-side * 0.03, -0.05, 0.2).applyEuler(k.rotation).add(k.position);
-      return p;
-    };
+    const armEnd = (k, side) => new THREE.Vector3(-side * 0.03, -0.05, 0.2).applyEuler(k.rotation).add(k.position);
     const a = armEnd(this.knuckles[0], -1);
     const b = armEnd(this.knuckles[1], 1);
     this.tieRod.position.copy(a).add(b).multiplyScalar(0.5);
     this.tieRod.scale.x = a.distanceTo(b);
     this.tieRod.rotation.y = -Math.atan2(b.z - a.z, b.x - a.x);
-    for (const shaft of this.shafts) shaft.rotation.z = sim.shaftAngle;
+    this.steeringWheel.rotation.y = sim.steeringWheel;
     this.fan.rotation.z = sim.engineAngle;
+    // Driveshafts, stretched from the transfer case on the frame to each differential.
+    for (const s of this.shafts) {
+      const from = this.frame.localToWorld(s.from.clone());
+      const to = this.axleGroups[s.to[0]].localToWorld(s.to[1].clone());
+      const length = from.distanceTo(to);
+      s.group.position.copy(from);
+      s.group.lookAt(to);
+      s.tube.scale.z = length;
+      s.yokes[0].position.z = 0.04;
+      s.yokes[1].position.z = length - 0.04;
+      s.spinner.rotation.z = sim.shaftAngle;
+    }
 
     this.updateTrack(sim.along);
     this.updateEffects(sim, dt);
     this.updateForces(sim, opts.forces);
+    this.updateCamera(sim, rdt);
 
-    // Camera: eases toward the goal view, turns with the car, and follows it exactly.
-    const ease = 1 - Math.exp(-(opts.realDt || dt) * 6);
-    for (const k of ["yaw", "pitch", "dist"]) this.view[k] += (this.goal[k] - this.view[k]) * ease;
-    let turn = sim.heading - this.heading;
-    turn = Math.atan2(Math.sin(turn), Math.cos(turn));
-    this.heading += turn * (1 - Math.exp(-(opts.realDt || dt) * 3));
-    this.lookY += (Math.max(R, py * 0.9) - this.lookY) * ease;
-    const portrait = this.H > this.W ? Math.min(1.9, (this.H / this.W) ** 0.7) : 1;
-    const d = this.view.dist * portrait;
-    const yaw = this.heading + this.view.yaw;
-    const pitch = this.view.pitch;
-    const f = sim.forward;
-    const target = new THREE.Vector3(px + f[0] * 0.6, this.lookY, pz + f[2] * 0.6);
-    this.camera.position.set(
-      target.x + Math.sin(yaw) * Math.cos(pitch) * d,
-      Math.max(0.06, target.y + Math.sin(pitch) * d),
-      target.z + Math.cos(yaw) * Math.cos(pitch) * d,
-    );
-    this.camera.lookAt(target);
-
-    this.sun.position.set(px - 2.2, 5.5, pz - 1.5);
-    this.sun.target.position.set(px, 0, pz);
+    this.sun.position.set(px - 2.2, py + 5, pz - 1.5);
+    this.sun.target.position.set(px, py - 0.7, pz);
     this.sky.position.copy(this.camera.position);
     this.stars.position.copy(this.camera.position);
 
     this.renderer.render(this.scene, this.camera);
   }
 
+  // The cameras. Chase, like a racing game's: behind and a little above, trailing the car round
+  // turns so you see its side, pulling back and widening as it speeds up. Driver: in the driver's
+  // seat, looking out over the hood. Orbit: anywhere round the car at a yaw (0 behind), pitch and
+  // distance. Dragging looks around; in the chase view it swings back behind after a moment.
+  updateCamera(sim, rdt) {
+    const ease = 1 - Math.exp(-rdt * 6);
+    const mode = this.goal.mode;
+    if (mode === "chase" && performance.now() - this.lastOrbit > 1500) {
+      this.goal.yaw += (0 - this.goal.yaw) * (1 - Math.exp(-rdt * 2));
+      this.goal.pitch += (CHASE.pitch - this.goal.pitch) * (1 - Math.exp(-rdt * 2));
+    }
+    for (const k of ["yaw", "pitch", "dist"]) this.view[k] += (this.goal[k] - this.view[k]) * ease;
+    let turn = sim.heading - this.heading;
+    turn = Math.atan2(Math.sin(turn), Math.cos(turn));
+    this.heading += turn * (1 - Math.exp(-rdt * (mode === "chase" ? 2.2 : 3)));
+    const speed = Math.abs(sim.forwardSpeed);
+    const f = sim.forward;
+    const [px, py, pz] = sim.p;
+    let fov = 45;
+
+    if (mode === "driver") {
+      // The driver's eyes, in the car's own axes, and a look ahead turned by any drag.
+      const eye = this.frame.localToWorld(new THREE.Vector3(CAR.rightHandDrive ? 0.4 : -0.4, 1.34, 0.28));
+      const ahead = this.frame.localToWorld(new THREE.Vector3(0, 0.9, -12)).sub(eye);
+      ahead.applyAxisAngle(new THREE.Vector3(0, 1, 0), this.view.yaw).normalize();
+      ahead.y += -this.view.pitch * 0.5;
+      this.camera.position.copy(eye);
+      this.camera.lookAt(eye.clone().add(ahead));
+      fov = 68;
+      this.chasePosition = null;
+    } else {
+      const chase = mode === "chase";
+      const portrait = this.H > this.W ? Math.min(1.9, (this.H / this.W) ** 0.7) : 1;
+      const d = this.view.dist * portrait * (chase ? 1 + Math.min(0.35, speed * 0.01) : 1);
+      const yaw = this.heading + this.view.yaw;
+      const pitch = this.view.pitch;
+      this.lookY += (Math.max(R + 0.3, py) - this.lookY) * ease;
+      const lead = chase ? CHASE_AHEAD : 0.6;
+      const target = new THREE.Vector3(px + f[0] * lead, this.lookY + (chase ? 0.1 : 0), pz + f[2] * lead);
+      const want = new THREE.Vector3(
+        target.x + Math.sin(yaw) * Math.cos(pitch) * d,
+        target.y + Math.sin(pitch) * d,
+        target.z + Math.cos(yaw) * Math.cos(pitch) * d,
+      );
+      // The chase camera follows a moment behind, on a spring, so it trails the car's lurches.
+      if (chase && this.chasePosition && this.chasePosition.distanceTo(want) < 20) {
+        this.chasePosition.lerp(want, 1 - Math.exp(-rdt * 9));
+      } else this.chasePosition = want.clone();
+      const camera = chase ? this.chasePosition : want;
+      camera.y = Math.max(camera.y, COURSE.height(camera.x, camera.z) + 0.5);
+      this.camera.position.copy(camera);
+      this.camera.lookAt(target);
+      fov = chase ? 52 + Math.min(16, speed * 0.6) : 45;
+    }
+    this.fov += (fov - this.fov) * (1 - Math.exp(-rdt * 3));
+    if (Math.abs(this.camera.fov - this.fov) > 0.01) {
+      this.camera.fov = this.fov;
+      this.camera.updateProjectionMatrix();
+      this.updatePointScale();
+    }
+  }
+
   updateTrack(x) {
-    // Strips, a surface on each half.
-    const first = Math.floor((x - BEHIND) / STRIP);
-    this.strips.forEach((pair, k) => {
-      const i = first + k;
-      const strip = STRIPS[stripIndexAt(i * STRIP + 0.01)];
-      pair[0].material = this.groundMaterial(SURFACES.indexOf(strip.left));
-      pair[1].material = this.groundMaterial(SURFACES.indexOf(strip.right));
-      for (const mesh of pair) mesh.position.z = -(i + 0.5) * STRIP;
-    });
-    // Field and kerbs keep their textures pinned to the ground as they follow along.
+    // The pieces of ground around the car, each where it comes round this time.
+    const pieces = COURSE.length / CHUNK;
+    const shown = new Set();
+    for (let j = Math.floor((x - BEHIND) / CHUNK); j <= Math.floor((x + AHEAD) / CHUNK); j++) {
+      const group = this.chunk(((j % pieces) + pieces) % pieces);
+      group.position.z = -j * CHUNK;
+      group.visible = true;
+      shown.add(group);
+    }
+    for (const group of this.shown) if (!shown.has(group)) group.visible = false;
+    this.shown = shown;
+    // The field keeps its texture pinned to the ground as it follows along.
     this.field.position.z = -Math.round(x / 2) * 2;
-    for (const kerb of this.kerbs) kerb.position.z = -Math.round(x / 2) * 2 - this.kerbLength / 2 + 40;
     const block = this.treeBlock;
     const n = Math.floor(x / block);
     this.treeBlocks[0].position.z = -n * block;
     this.treeBlocks[1].position.z = -(n + 1) * block;
 
-    // Ticks every half metre on both edges.
-    const m = new THREE.Matrix4();
-    let k = 0;
-    const from = Math.ceil((x - BEHIND) * 2);
-    const to = Math.floor((x + AHEAD) * 2);
-    for (let t = from; t <= to && k < this.tickCapacity - 1; t++) {
-      const metre = t % 2 === 0;
-      for (const side of [-1, 1]) {
-        m.makeScale(metre ? 1 : 0.5, 1, 1);
-        m.setPosition(side * (TRACK_WIDTH / 2 - (metre ? 0.11 : 0.055)), 0.0012, -t / 2);
-        this.ticks.setMatrixAt(k++, m);
-      }
+    // Signs at the start of the obstacles around the car.
+    const L = COURSE.length;
+    const starts = [];
+    for (let lap = Math.floor((x - BEHIND) / L); lap <= Math.floor((x + AHEAD) / L); lap++) {
+      COURSE.sections.forEach((s, i) => {
+        const at = lap * L + s.start;
+        if (at > x - BEHIND && at < x + AHEAD) starts.push({ at, i });
+      });
     }
-    this.ticks.count = k;
-    this.ticks.instanceMatrix.needsUpdate = true;
-
-    // Metre numbers near the axle.
-    const base = Math.floor(x) - 3;
-    this.numbers.forEach((num, j) => {
-      const value = base + j;
-      num.mesh.position.set(-TRACK_WIDTH / 2 + 0.38, 0.002, -value);
-      if (num.value !== value) {
-        num.value = value;
-        const g = num.canvas.getContext("2d");
-        g.clearRect(0, 0, 128, 64);
-        g.fillStyle = "rgba(250,247,240,0.9)";
-        g.font = `800 46px system-ui, -apple-system, "Segoe UI", Roboto, sans-serif`;
-        g.textAlign = "center";
-        g.textBaseline = "middle";
-        g.fillText(`${value} m`, 64, 34);
-        num.tex.needsUpdate = true;
-      }
-    });
-
-    // Signs at the start of the strips around the axle.
-    const strip0 = Math.floor(x / STRIP) - 1;
     this.signs.forEach((sign, j) => {
-      const i = strip0 + j;
-      if (sign.strip !== i) {
-        sign.strip = i;
-        sign.board.material.map = this.signTexture(stripIndexAt(i * STRIP + 0.01));
+      const here = starts[j];
+      sign.group.visible = !!here;
+      if (!here) return;
+      if (sign.section !== here.i) {
+        sign.section = here.i;
+        sign.board.material.map = this.signTexture(here.i);
         sign.board.material.needsUpdate = true;
       }
-      sign.group.position.z = -i * STRIP;
+      sign.group.position.z = -here.at;
     });
   }
 
@@ -1387,6 +1529,7 @@ export class World {
       const slipSpeed = onGround ? Math.hypot(c.tread[0], c.tread[2]) : 0;
       const load = c.normal / ((sim.mass * sim.g) / 2 || 1);
       const [x, , z] = c.point;
+      const groundY = c.ground[1];
 
       // What the tire leaves along its track. A jump to somewhere else leaves nothing between.
       const last = this.lastPoints[i];
@@ -1410,7 +1553,7 @@ export class World {
         const across = (rand() - 0.5) * TIRE.width;
         return {
           x: x + a[0] * across + (rand() - 0.5) * 0.04,
-          y: 0.01,
+          y: groundY + 0.01,
           z: z + a[2] * across + (rand() - 0.5) * 0.04,
           vx: sim.v[0] * 0.3 + t[0] * (0.3 + rand() * 0.6) + (rand() - 0.5) * 0.4,
           vy: up * (0.3 + rand() * 0.9) + 0.2,
@@ -1422,7 +1565,7 @@ export class World {
         if (slipSpeed > 2.5 && airiness > 0) {
           P.spawn("smoke", (slipSpeed - 2.5) * 16 * Math.min(2, load), dt, (rand) => ({
             x: x + (rand() - 0.5) * 0.12,
-            y: 0.03,
+            y: groundY + 0.03,
             z: z + (rand() - 0.5) * 0.12,
             vx: t[0] * 0.15,
             vy: 0.1 + rand() * 0.2,
@@ -1436,13 +1579,13 @@ export class World {
         if (slipSpeed > 0.5) P.spawn("frost", slipSpeed * 70, dt, (rand) => fling(rand, 0.3));
       } else if (slipSpeed > 0.25) {
         P.spawn(kind, slipSpeed * 110 * Math.min(2, load), dt, (rand) => fling(rand, 0.3 + slipSpeed * 0.35));
-        if ((kind === "sand" || kind === "stones") && airiness > 0) {
+        if ((kind === "sand" || kind === "stones" || kind === "dirt") && airiness > 0) {
           P.spawn("dust", slipSpeed * 8, dt, (rand) => ({ ...fling(rand, 0.2), vx: t[0] * 0.2, vz: t[2] * 0.2 }));
         }
       }
     });
-    this.marks.write(sim.time);
-    P.update(dt, sim.g, airiness);
+    this.marks.write(sim.time, COURSE);
+    P.update(dt, sim.g, airiness, COURSE);
   }
 
   // Arrows for the forces, to one scale: the weight on one tire is 0.8 of a tire's radius long.
@@ -1466,16 +1609,15 @@ export class World {
       const c = wheel.contact;
       // Just outside each tire, so the tire doesn't hide them.
       const out = wheel.side * (HALF_WIDTH + 0.03);
-      const at = new THREE.Vector3(c.point[0] + c.axle[0] * out, 0, c.point[2] + c.axle[2] * out);
+      const at = new THREE.Vector3(c.ground[0] + c.axle[0] * out, c.ground[1] + c.axle[1] * out, c.ground[2] + c.axle[2] * out);
       if (c.normal > 0) {
         const push = len(c.normal);
-        a.normals[i].set(at.clone().setY(-push), new THREE.Vector3(0, push, 0));
-        const fx = c.friction[0];
-        const fz = c.friction[2];
-        const size = Math.hypot(fx, fz);
-        const l = Math.abs(len(size));
-        a.frictions[i].set(at, size > 0 ? new THREE.Vector3((fx / size) * l, 0, (fz / size) * l) : new THREE.Vector3());
-        this.labelPoints["tire" + i] = at.clone().setY(-push * 0.5);
+        const n = new THREE.Vector3(...c.n).multiplyScalar(push);
+        a.normals[i].set(at.clone().sub(n), n);
+        const f = new THREE.Vector3(...c.friction);
+        const size = f.length();
+        a.frictions[i].set(at, size > 0 ? f.multiplyScalar(Math.abs(len(size)) / size) : new THREE.Vector3());
+        this.labelPoints["tire" + i] = at.clone().addScaledVector(n, -0.5);
       } else {
         a.normals[i].group.visible = false;
         a.frictions[i].group.visible = false;
@@ -1488,7 +1630,7 @@ export class World {
       const sweep = Math.min(1, Math.abs(T) / 6000) * Math.PI * 1.2 + 0.4;
       this.torqueArc.geometry.dispose();
       this.torqueArc.geometry = new THREE.TorusGeometry(0.24, 0.008, 8, 48, sweep);
-      const diff = new THREE.Vector3(...sim.toWorld([-sim.centre[0], -sim.centre[1], CAR.wheelbase / 2 - sim.centre[2]])).add(new THREE.Vector3(px, py, pz));
+      const diff = new THREE.Vector3(...sim.axleFrame(sim.axles[1]).middle);
       this.torque.position.copy(diff);
       // The torus lies in its own xy plane; turned to the plane the tires turn in. There, its angle
       // runs from forward (0) up over the top (π/2); spinning forward, the top goes forward, so the

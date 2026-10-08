@@ -1,8 +1,8 @@
 {
   "slug": "naseeb",
-  "title": "Naseeb",
-  "shortDescription": "Drive a 1970 Land Cruiser FJ40 with real physics: every tire grips, slips and spins.",
-  "description": "A driving physics sandbox built up from the tires. A 1970 Toyota Land Cruiser FJ40 rolling chassis, modelled on its published specs: the 3.9-litre F six, the 3-speed gearbox and two-speed transfer case, part-time four-wheel drive with open differentials, drum brakes and H78-15 tires. Every tire grips, slips and spins by a real tire model, weight shifts as you accelerate, brake and turn, and nine surfaces from dry asphalt to sand, mud, snow and ice each grip differently. Force arrows show the weight, the ground pushing back and the friction at every tire.",
+  "title": "Naseeb: The Jeep Driver",
+  "shortDescription": "You are Naseeb, a jeep driver in the far north. Prove your old jeep on an off-road test ground, with real physics.",
+  "description": "You are Naseeb, a jeep driver in the far north. Prove your old army-green jeep on an off-road test ground: washboard, logs, an axle twister, rock steps, a 40% hill, a 25° side slope, a V-ditch, a mud pit, a rock garden, a sand trap and whoops. The jeep is built up from its tires with real physics: a straight six, three gears in high and low range, part-time four-wheel drive, leaf springs, tires that climb edges and grip along slopes, and a chassis that scrapes. With engine and tire sounds made from the physics.",
   "genres": [
     "Simulation",
     "Driving",
@@ -13,7 +13,7 @@
     "driving",
     "4x4",
     "off-road",
-    "land cruiser",
+    "jeep",
     "3d",
     "mobile"
   ],
