@@ -10,7 +10,7 @@
     <title>Naseeb: The Jeep Driver</title>
     <meta
       name="description"
-      content="You are Naseeb, a jeep driver in the far north. Prove your old four-wheel-drive jeep on an off-road test ground: logs, rock steps, ditches, side slopes and mud, with real physics."
+      content="You are Naseeb, a jeep driver in the far north. Take your old jeep up a narrow mountain track: hairpins, drops and steep climbs, with real physics."
     />
     <link rel="canonical" href="https://yayzu.com/naseeb/" />
     <link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'%3E%3Ccircle cx='50' cy='50' r='44' fill='%23222'/%3E%3Ccircle cx='50' cy='50' r='26' fill='%23ccd'/%3E%3Ccircle cx='50' cy='50' r='8' fill='%23f2a93b'/%3E%3C/svg%3E" />
@@ -383,6 +383,62 @@
       .surface.current {
         box-shadow: inset 0 0 0 2px #ffcf7a;
       }
+      #banner {
+        position: fixed;
+        z-index: 3;
+        left: 50%;
+        top: 22%;
+        transform: translateX(-50%);
+        margin: 0;
+        padding: 10px 18px;
+        border-radius: 999px;
+        background: rgba(20, 24, 34, 0.72);
+        color: #ffe3ad;
+        font-size: 17px;
+        font-weight: 700;
+        pointer-events: none;
+        white-space: nowrap;
+      }
+      #back-on-road {
+        position: fixed;
+        z-index: 3;
+        left: 50%;
+        top: 30%;
+        transform: translateX(-50%);
+        width: auto;
+        padding: 0 26px;
+        margin: 0;
+        box-shadow: 0 4px 0 #b9681c, 0 10px 24px rgba(242, 154, 59, 0.35);
+      }
+      #back-on-road[hidden] {
+        display: none;
+      }
+      #finish {
+        position: fixed;
+        z-index: 4;
+        inset: 0;
+        display: grid;
+        place-items: center;
+        padding: 16px;
+        background: rgba(20, 24, 34, 0.35);
+      }
+      #finish[hidden] {
+        display: none;
+      }
+      .again {
+        display: block;
+        width: 100%;
+        max-width: 260px;
+        margin: 10px auto 0;
+        min-height: 46px;
+        border: 0;
+        border-radius: 999px;
+        background: linear-gradient(135deg, #ffd27f, #f29a3b);
+        color: #2a1a08;
+        font-size: 17px;
+        font-weight: 800;
+        cursor: pointer;
+      }
       #overlay {
         position: fixed;
         z-index: 4;
@@ -523,6 +579,12 @@
           <dd id="r-gear">Auto 1</dd>
           <dt>Engine</dt>
           <dd id="r-rpm">650 rpm</dd>
+          <dt>Climbed</dt>
+          <dd id="r-climb">0 m</dd>
+          <dt>Time</dt>
+          <dd id="r-time">0:00</dd>
+          <dt id="r-lockers-label" hidden>Diff locks</dt>
+          <dd id="r-lockers" hidden>Rear</dd>
         </dl>
         <div id="tach"><i id="tach-bar"></i></div>
         <dl class="engineer">
@@ -561,16 +623,13 @@
         </dl>
       </section>
       <div class="tools">
-        <button id="t-slow" class="tool" aria-pressed="false">Slow-mo</button>
         <button id="t-sound" class="tool on" aria-pressed="true">Sound</button>
-        <button id="t-view" class="tool">View: Chase</button>
-        <button id="t-drop" class="tool">Drop</button>
         <button id="t-settings" class="tool" aria-label="Settings">⚙</button>
       </div>
     </div>
 
     <section id="settings" class="panel" hidden>
-      <h2>Jeep and world <button id="s-close" class="tiny">Close</button></h2>
+      <h2>Jeep <button id="s-close" class="tiny">Close</button></h2>
       <label for="s-drive">Drive</label>
       <select id="s-drive">
         <option value="4x4">4×4: front and rear locked together</option>
@@ -582,21 +641,19 @@
         <option value="rear">Rear locked</option>
         <option value="both">Front and rear locked</option>
       </select>
-      <p class="note">An open differential lets its tires turn at different speeds round a corner, but a tire on ice gets all the spin. Locked, they turn together.</p>
-      <label for="s-pressure">Tire pressure <span id="s-pressure-out"></span></label>
-      <input id="s-pressure" type="range" min="0.8" max="3.5" step="0.1" />
-      <p class="note">Lower squashes the tires more: a bigger contact patch, more rolling resistance.</p>
-      <label for="s-weight">Weight, each tire and wheel <span id="s-weight-out"></span></label>
-      <input id="s-weight" type="range" min="10" max="60" step="0.5" />
-      <p class="note">Heavier tires take more to spin up and to stop.</p>
-      <label for="s-world">Gravity</label>
-      <select id="s-world">
-        <option value="earth">Earth, 9.81 m/s²</option>
-        <option value="mars">Mars, 3.71 m/s²</option>
-        <option value="moon">Moon, 1.62 m/s² (no air)</option>
-        <option value="jupiter">Jupiter, 24.79 m/s²</option>
+      <p class="note">An open differential lets its tires turn at different speeds round a corner, but a tire that's light, or in the air, gets all the spin. Locked, they turn together. L changes them as you drive.</p>
+      <label for="s-time">Time of day</label>
+      <select id="s-time">
+        <option value="morning">Morning</option>
+        <option value="afternoon">Afternoon</option>
+        <option value="evening">Evening</option>
       </select>
-      <dl id="s-derived"></dl>
+      <label for="s-quality">Graphics</label>
+      <select id="s-quality">
+        <option value="auto">Auto: high if your computer keeps up</option>
+        <option value="high">High: soft shading and glow</option>
+        <option value="standard">Standard: faster</option>
+      </select>
       <button id="s-defaults" class="tiny" style="margin-top: 12px">Back to defaults</button>
     </section>
 
@@ -608,7 +665,7 @@
           <button id="c-left" class="pad-btn" aria-label="Steer left">◀</button>
           <button id="c-right" class="pad-btn" aria-label="Steer right">▶</button>
         </div>
-        <p id="hint">▲ throttle, ▼ or Space to brake, ◀ ▶ to steer. Gears 1–6, 0 for automatic, R reverse. Drag to look around.</p>
+        <p id="hint">▲ throttle, ▼ brake and back up, ◀ ▶ steer. 1 for Low 1st on the steep bits. V changes the view.</p>
         <div class="pedals">
           <div id="gears" aria-label="Gears"></div>
           <div class="pad">
@@ -617,7 +674,19 @@
           </div>
         </div>
       </div>
-      <nav id="surfaces" aria-label="Go to an obstacle"></nav>
+    </div>
+
+    <p id="banner" hidden></p>
+    <button id="back-on-road" class="again" hidden>Back on the road</button>
+
+    <div id="finish" hidden>
+      <div class="card panel">
+        <h2>The top</h2>
+        <p id="f-time"></p>
+        <p id="f-best"></p>
+        <button id="f-down" class="again">Drive back down</button>
+        <button id="f-again" class="again">Again from the bottom</button>
+      </div>
     </div>
 
     <div id="overlay">
@@ -631,12 +700,14 @@
           leaf springs.
         </p>
         <p>
-          Before the mountains, prove the jeep and yourself on the test ground: logs, rock steps,
-          axle twisters, ditches, side slopes, a steep climb and a mud pit.
+          Today's job: take the jeep up the mountain. The track is a narrow ledge of dirt cut into
+          the slope, the mountain on one side and the drop on the other. Some of the hairpins are
+          too tight to get round in one go: stop, back up, and go again. One mistake and you're
+          over the edge.
         </p>
         <button id="start">Start</button>
         <a class="more-games" href="../../" target="_top">More games on Yayzu</a>
-        <p id="controls">▲ throttle, ▼ or Space brakes, ◀ ▶ steer (or arrows / WASD). Gears 1–6 (1 is Low 1st, for the hard obstacles), 0 automatic, R reverse, N neutral. Backspace drops it, V view, M slow-mo, K sound, F the engineer's view (forces and readouts). The chips at the bottom take you to each obstacle.</p>
+        <p id="controls">▲ throttle, ▼ or Space brakes, ◀ ▶ steer (or arrows / WASD). Hold ▼ to stop, then to back up. Gears 1–6 (1 is Low 1st, for the steepest bits), 0 automatic. L diff locks, V view, K sound, Backspace back onto the road.</p>
       </div>
     </div>
     <script type="module" src="./game.js"></script>

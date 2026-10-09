@@ -1,19 +1,21 @@
-import { Sim, DEFAULTS, WORLDS, COURSE, TIRE, CAR, ENGINE, GEARS } from "./physics.js";
-import { World, surfaceColor } from "./scene3d.js";
+import { Sim, DEFAULTS, MOUNTAIN, CAR, ENGINE, GEARS } from "./physics.js";
+import { World } from "./scene3d.js";
+import { TIME_NAMES } from "./atmosphere.js";
 import { Sound } from "./sound.js";
 
 // Saved settings from before the FJ40 don't carry over.
 const SETTINGS_KEY = "naseeb-fj40-settings";
-const START_X = CAR.wheelbase / 2 + 1.5; // metres down the first strip of asphalt, the whole car on it
+const START = 6; // metres up the road the jeep starts
 const DROP = 0.1; // metres the car falls when it's put down
 const MIN_TAP = 0.15; // seconds: even the quickest tap on the throttle opens it for this long
-const SLOW = 0.2; // slow motion runs at this speed
+const BEST_KEY = "naseeb-mountain-best";
+const REV_LIMIT = 3700; // in a gear picked by hand, the foot comes off from here: about 3,550 rpm at most
 
-// Camera views: chase (behind, racing-game style), the driver's seat, and two orbits. For the
+// Camera views: the driver's seat, chase (behind, racing-game style), and two orbits. For the
 // orbits yaw 0 is straight behind the car, pitch is up from level, dist in metres.
 const VIEWS = [
-  { name: "Chase", mode: "chase", yaw: 0, pitch: 0.23, dist: 10.7 },
   { name: "Driver", mode: "driver", yaw: 0, pitch: 0, dist: 10.7 },
+  { name: "Chase", mode: "chase", yaw: 0, pitch: 0.23, dist: 10.7 },
   { name: "Side", mode: "orbit", yaw: Math.PI / 2, pitch: 0.12, dist: 7 },
   { name: "High", mode: "orbit", yaw: 0.6, pitch: 1.0, dist: 11 },
 ];
@@ -42,16 +44,22 @@ const ui = {
   springsRear: $("r-springs-rear"),
   extra: $("extra"),
   more: $("more"),
-  slow: $("t-slow"),
-  view: $("t-view"),
-  drop: $("t-drop"),
   sound: $("t-sound"),
   settingsButton: $("t-settings"),
   settings: $("settings"),
   close: $("s-close"),
   defaults: $("s-defaults"),
-  derived: $("s-derived"),
-  surfaces: $("surfaces"),
+  climb: $("r-climb"),
+  time: $("r-time"),
+  lockers: $("r-lockers"),
+  lockersLabel: $("r-lockers-label"),
+  banner: $("banner"),
+  backOnRoad: $("back-on-road"),
+  finish: $("finish"),
+  finishTime: $("f-time"),
+  finishBest: $("f-best"),
+  down: $("f-down"),
+  again: $("f-again"),
   hint: $("hint"),
   labels: $("labels"),
   overlay: $("overlay"),
@@ -64,16 +72,21 @@ const ui = {
   tach: $("tach-bar"),
 };
 
+// How it looks: the time of day, and the graphics (left to judge for itself, by default).
+const LOOKS = { time: "afternoon", quality: "auto" };
+
 function loadSettings() {
   try {
     const saved = JSON.parse(localStorage.getItem(SETTINGS_KEY) || "{}");
-    const s = { ...DEFAULTS, ...saved };
-    if (!WORLDS[s.world]) s.world = DEFAULTS.world;
+    // Only what a driver chooses: the drive and the diff locks; and how it looks.
+    const s = { ...DEFAULTS, ...LOOKS, drive: saved.drive, lockers: saved.lockers, time: saved.time, quality: saved.quality };
     if (!["4x4", "rear"].includes(s.drive)) s.drive = DEFAULTS.drive;
     if (!["none", "rear", "both"].includes(s.lockers)) s.lockers = DEFAULTS.lockers;
+    if (!TIME_NAMES.includes(s.time)) s.time = LOOKS.time;
+    if (!["auto", "high", "standard"].includes(s.quality)) s.quality = LOOKS.quality;
     return s;
   } catch {
-    return { ...DEFAULTS };
+    return { ...DEFAULTS, ...LOOKS };
   }
 }
 function saveSettings() {
@@ -87,8 +100,11 @@ function saveSettings() {
 let settings = loadSettings();
 const sim = new Sim(settings);
 const world = new World(ui.canvas);
+world.setTime(settings.time);
+world.setQuality(settings.quality);
 // forces: the engineer's view, with the force arrows and every readout a driver wouldn't have.
-const view = { forces: false, slow: false, started: false, preset: 0 };
+const view = { forces: false, started: false, preset: 0 };
+world.setView(VIEWS[0]);
 
 // ---------- Input ----------
 // ▲ is the throttle, ▼ brakes, ◀ ▶ steer; on screen, or the arrow keys and WASD. Space only
@@ -134,7 +150,9 @@ function controls() {
       sim.shift(-1);
     }
   }
-  return { throttle: brake && !(backing && back) ? 0 : throttle ? 1 : 0, brake: brake ? 1 : 0, steer };
+  // In a gear picked by hand, the driver eases off short of the governor, as anyone would.
+  const foot = sim.auto ? 1 : Math.max(0, Math.min(1, (REV_LIMIT - sim.rpm) / 250));
+  return { throttle: brake && !(backing && back) ? 0 : throttle ? foot : 0, brake: brake ? 1 : 0, steer };
 }
 
 function pressThrottle() {
@@ -264,8 +282,8 @@ window.addEventListener("keydown", (e) => {
   } else if (e.code === "KeyR") sim.shift(-1);
   else if (e.code === "KeyN") sim.shift(0);
   else if (e.code === "Backspace") drop();
+  else if (e.code === "KeyL") cycleLockers();
   else if (e.code === "KeyF") toggleForces();
-  else if (e.code === "KeyM") toggleSlow();
   else if (e.code === "KeyK") toggleSound();
   else if (e.code === "KeyV") nextView();
   else if (e.code === "Equal" || e.code === "NumpadAdd") world.zoom(1 / 1.15);
@@ -284,16 +302,100 @@ window.addEventListener("blur", () => {
 
 // ---------- Buttons ----------
 
-function drop() {
+// The run: how far up the road it's been (on the road), when the clock started, whether it's at
+// the top.
+const road = MOUNTAIN.road;
+const run = { along: START, since: null, time: 0, done: false, off: 0, over: 0 };
+let best = null;
+try {
+  best = Number(localStorage.getItem(BEST_KEY)) || null;
+} catch {}
+
+// Puts the jeep on the road `along` metres up it, facing up it.
+function putOnRoad(along) {
   tap = 0;
-  sim.reset(sim.along, DROP);
+  const at = MOUNTAIN.roadAt(along);
+  sim.place(at.x, at.z, at.heading, DROP);
+}
+// Back onto the road where it last was.
+function drop() {
+  putOnRoad(Math.max(START, run.along - 3));
+}
+// To one of the road's stops (for testing).
+function jumpTo(index) {
+  const stop = MOUNTAIN.stops[index];
+  if (!stop) return;
+  run.along = stop.along;
+  putOnRoad(stop.along);
+}
+function restart() {
+  run.along = START;
+  run.since = null;
+  run.time = 0;
+  run.done = false;
+  ui.finish.hidden = true;
+  putOnRoad(START);
 }
 
-// To the start of the nearest obstacle of the given kind, facing it.
-function jumpTo(index) {
-  if (index < 0 || index >= COURSE.sections.length) return;
-  tap = 0;
-  sim.reset(COURSE.sectionNear(sim.along, index) + 2, DROP);
+let bannerUntil = 0;
+function say(text, seconds = 2.5) {
+  ui.banner.textContent = text;
+  ui.banner.hidden = false;
+  bannerUntil = performance.now() + seconds * 1000;
+}
+
+const clock = (seconds) => `${Math.floor(seconds / 60)}:${String(Math.floor(seconds % 60)).padStart(2, "0")}`;
+const climbed = (along) => road.e[Math.min(road.count - 1, Math.round(along / 0.5))] - road.e[0];
+
+// Each frame: how far up the road it's got, the clock, the top; and if it's gone over the edge or
+// rolled, back onto the road.
+function followRun(dt) {
+  if (!view.started) return;
+  const on = MOUNTAIN.onRoad(sim.p[0], sim.p[2]);
+  if (on && Math.abs(on.along - run.along) < 30) run.along = on.along;
+  if (run.since === null && Math.abs(sim.forwardSpeed) > 0.3) run.since = 0;
+  if (run.since !== null && !run.done) run.time += dt;
+  run.off = on ? 0 : run.off + dt;
+  run.over = sim.overturned ? run.over + dt : 0;
+  // Off the road or rolled: a button to put it back on the road, where it left it. Never by
+  // itself; the driver may want to try getting back on.
+  const stranded = run.over > 1 || run.off > 1.2;
+  if (ui.backOnRoad.hidden === stranded) {
+    ui.backOnRoad.hidden = !stranded;
+    ui.backOnRoad.textContent = run.over > 1 ? "Rolled. Back on the road" : "Back on the road";
+  }
+  if (!run.done && on && on.along > road.length - 14) {
+    run.done = true;
+    const fresh = best === null || run.time < best;
+    if (fresh) {
+      best = run.time;
+      try {
+        localStorage.setItem(BEST_KEY, String(best));
+      } catch {}
+    }
+    ui.finishTime.textContent = `You made it up in ${clock(run.time)}.`;
+    ui.finishBest.textContent = fresh ? "Your best yet." : `Your best: ${clock(best)}.`;
+    ui.finish.hidden = false;
+  }
+  if (bannerUntil && performance.now() > bannerUntil) {
+    ui.banner.hidden = true;
+    bannerUntil = 0;
+  }
+}
+ui.down.addEventListener("click", () => (ui.finish.hidden = true));
+ui.backOnRoad.addEventListener("click", () => {
+  run.over = run.off = 0;
+  ui.backOnRoad.hidden = true;
+  drop();
+});
+ui.again.addEventListener("click", restart);
+
+// The diff locks, from the dash: none, rear, front and rear.
+function cycleLockers() {
+  const order = ["none", "rear", "both"];
+  settings.lockers = order[(order.indexOf(settings.lockers) + 1) % order.length];
+  applySettings();
+  say({ none: "Diff locks off", rear: "Rear diff locked", both: "Front and rear diffs locked" }[settings.lockers], 1.6);
 }
 
 function toggleForces() {
@@ -323,22 +425,13 @@ ui.sound.addEventListener("click", toggleSound);
 // Browsers only let sound play once the player has tapped or pressed something.
 for (const type of ["pointerdown", "keydown"]) window.addEventListener(type, () => sound.wake(), true);
 
-function toggleSlow() {
-  view.slow = !view.slow;
-  ui.slow.classList.toggle("on", view.slow);
-  ui.slow.setAttribute("aria-pressed", view.slow);
-}
-
 function nextView() {
   view.preset = (view.preset + 1) % VIEWS.length;
   const v = VIEWS[view.preset];
   world.setView(v);
-  ui.view.textContent = `View: ${v.name}`;
+  say(`${v.name} view`, 1.2);
 }
 
-ui.slow.addEventListener("click", toggleSlow);
-ui.view.addEventListener("click", nextView);
-ui.drop.addEventListener("click", drop);
 ui.more.addEventListener("click", () => {
   const open = ui.extra.hidden;
   ui.extra.hidden = !open;
@@ -349,57 +442,26 @@ if (window.innerWidth < 640) {
   ui.more.textContent = "More";
 }
 
-COURSE.sections.forEach((s, i) => {
-  const chip = document.createElement("button");
-  chip.className = "surface";
-  chip.innerHTML = `<i style="background:${surfaceColor(s.look)}"></i>${s.name}`;
-  chip.title = s.note;
-  chip.addEventListener("click", () => jumpTo(i));
-  ui.surfaces.append(chip);
-});
 
 // ---------- Settings ----------
 
-const fields = {
-  weight: { input: $("s-weight"), out: $("s-weight-out"), show: (v) => `${v.toFixed(1)} kg` },
-  pressure: { input: $("s-pressure"), out: $("s-pressure-out"), show: (v) => `${v.toFixed(1)} bar (${Math.round(v * 14.5)} psi)` },
-};
-const selects = { drive: $("s-drive"), lockers: $("s-lockers"), world: $("s-world") };
+const selects = { drive: $("s-drive"), lockers: $("s-lockers"), time: $("s-time"), quality: $("s-quality") };
 
 function showSettings() {
-  for (const [key, f] of Object.entries(fields)) {
-    f.input.value = settings[key];
-    f.out.textContent = f.show(settings[key]);
-  }
   for (const [key, el] of Object.entries(selects)) el.value = settings[key];
-  const perTire = (sim.mass * sim.g) / 4;
-  const rows = [
-    ["Kerb weight", `${sim.mass.toFixed(0)} kg`],
-    ["On the front tires", `${Math.round(100 - sim.rearShare * 100)}%`],
-    ["Centre of mass", `${((TIRE.radius + sim.totalCentre[1]) * 100).toFixed(0)} cm up`],
-    ["On the springs", `${sim.sprungMass.toFixed(0)} kg (axles ${sim.axles.map((a) => a.mass.toFixed(0)).join(" and ")})`],
-    ["Engine", `${ENGINE.name}`],
-    ["Peak torque", "283 N·m (209 lb·ft) at 2,000 rpm"],
-    ["Gears 1–6", GEARS.map((g) => g.label).join(", ")],
-    ["Tire stiffness", `${(sim.kTire / 1000).toFixed(0)} kN/m`],
-    ["Squash at rest", `${((perTire / sim.kTire) * 1000).toFixed(0)} mm`],
-    ["Contact patch at rest", `${((perTire / (sim.pressureBar * 1e5)) * 1e4).toFixed(0)} cm² each`],
-  ];
-  ui.derived.innerHTML = rows.map(([k, v]) => `<dt>${k}</dt><dd>${v}</dd>`).join("");
+  const locked = settings.lockers !== "none";
+  ui.lockers.hidden = ui.lockersLabel.hidden = !locked;
+  ui.lockers.textContent = settings.lockers === "both" ? "Front and rear" : "Rear";
 }
 
 function applySettings() {
   sim.configure(settings);
+  world.setTime(settings.time);
+  world.setQuality(settings.quality);
   saveSettings();
   showSettings();
 }
 
-for (const [key, f] of Object.entries(fields)) {
-  f.input.addEventListener("input", () => {
-    settings[key] = Number(f.input.value);
-    applySettings();
-  });
-}
 for (const [key, el] of Object.entries(selects)) {
   el.addEventListener("change", () => {
     settings[key] = el.value;
@@ -407,7 +469,7 @@ for (const [key, el] of Object.entries(selects)) {
   });
 }
 ui.defaults.addEventListener("click", () => {
-  settings = { ...DEFAULTS };
+  settings = { ...DEFAULTS, ...LOOKS };
   applySettings();
 });
 ui.settingsButton.addEventListener("click", () => {
@@ -448,7 +510,7 @@ function stateOf() {
   return sim.wheelTorque > 0 ? "Gripping" : "Rolling";
 }
 
-let lastSection = null;
+
 let lastGear = null;
 function showReadouts() {
   const [fl, fr, rl, rr] = sim.wheels.map((w) => w.contact);
@@ -491,11 +553,8 @@ function showReadouts() {
     ui.springsFront.textContent = `${mm(front.travel[0])} · ${mm(front.travel[1])} mm`;
     ui.springsRear.textContent = `${mm(rear.travel[0])} · ${mm(rear.travel[1])} mm`;
   }
-  const here = COURSE.locate(sim.along).index;
-  if (here !== lastSection) {
-    lastSection = here;
-    [...ui.surfaces.children].forEach((chip, i) => chip.classList.toggle("current", i === here));
-  }
+  ui.climb.textContent = `${Math.max(0, Math.round(climbed(run.along)))} of ${Math.round(climbed(road.length))} m`;
+  ui.time.textContent = clock(run.time);
   const gearKey = `${sim.auto}${sim.gear}`;
   if (gearKey !== lastGear) {
     lastGear = gearKey;
@@ -539,17 +598,11 @@ function showLabels() {
 
 // ---------- Loop ----------
 
-let overFor = 0; // how long it's been on its side or roof
 function update(dt) {
-  overFor = sim.overturned ? overFor + dt : 0;
-  if (overFor > 2.5) {
-    overFor = 0;
-    drop();
-  }
-  const simDt = view.slow ? dt * SLOW : dt;
-  sim.advance(simDt, view.started ? controls() : { throttle: 0, brake: 0, steer: 0 });
-  world.draw(sim, simDt, { forces: view.forces, world: settings.world, realDt: dt });
-  sound.update(sim, { inside: world.goal.mode === "driver", rate: view.slow ? SLOW : 1 });
+  sim.advance(dt, view.started ? controls() : { throttle: 0, brake: 0, steer: 0 });
+  followRun(dt);
+  world.draw(sim, dt, { forces: view.forces, world: "earth", realDt: dt });
+  sound.update(sim, { inside: world.goal.mode === "driver" });
   showReadouts();
   showLabels();
 }
@@ -596,6 +649,12 @@ function adaptResolution(ms) {
   if (r.samples.length < 45) return;
   const median = r.samples.sort((a, b) => a - b)[22];
   r.samples.length = 0;
+  // Graphics left on auto: the soft shading and glow go first, before any resolution.
+  if (world.auto && world.high && median > 20) {
+    world.high = false;
+    r.warmup = 1;
+    return;
+  }
   let next = ratio;
   if (median > 36 && ratio > 0.6) next = Math.max(0.6, ratio * RESOLUTION_STEP);
   else if (median > 18.5 && ratio > 1) next = Math.max(1, ratio * RESOLUTION_STEP);
@@ -616,9 +675,20 @@ function adaptResolution(ms) {
   if (next !== ratio) world.setPixelRatio(next);
 }
 
+// At most 60 frames a second, however fast the screen refreshes: on a 120 or 144 Hz screen the
+// frames in between are skipped. Each frame drawn books the next a sixtieth of a second on, and
+// one comes due a little early (the screen's ticks rarely line up), so the average holds at 60.
+const FRAME_MS = 1000 / 60;
+let due = 0;
+
 let loopHeld = false;
 let last = performance.now();
 function frame(now) {
+  if (now < due - FRAME_MS * 0.3) {
+    requestAnimationFrame(frame);
+    return;
+  }
+  due = Math.max(due + FRAME_MS, now + FRAME_MS * 0.5);
   const gap = now - last;
   const dt = Math.min(0.05, Math.max(0, gap / 1000));
   last = now;
@@ -635,7 +705,7 @@ function start() {
   view.started = true;
   ui.overlay.hidden = true;
   sound.start();
-  sim.reset(START_X, DROP);
+  restart();
 }
 ui.start.addEventListener("click", start);
 window.addEventListener("resize", () => world.resize());
@@ -644,7 +714,7 @@ document.addEventListener("visibilitychange", () => {
   sound.pause(document.hidden);
 });
 
-sim.reset(START_X, 0);
+putOnRoad(START);
 showSettings();
 // Opened from the game page's Play button: that was the player's "play", so skip the title card.
 if (new URLSearchParams(location.search).has("autostart")) start();
@@ -660,6 +730,7 @@ if (location.hostname === "localhost") {
     start,
     drop,
     jumpTo,
+    putOnRoad,
     nextView,
     press: (key, held = true) => (buttons[key] = held),
     holdLoop: (held) => (loopHeld = held),

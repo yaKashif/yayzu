@@ -1,6 +1,6 @@
 // Naseeb's physics: Naseeb's jeep, a 1970 Toyota Land Cruiser FJ40 as closely as published specs
-// allow, on the ground in ground.js: the off-road test course, or the flat strips of surfaces the
-// checks use. A ladder frame on four H78-15 tires, the front two steered; the F six, a 3-speed
+// allow, on the mountain in mountain.js (or the flat strips of surfaces in ground.js the checks
+// use). A ladder frame on four H78-15 tires, the front two steered; the F six, a 3-speed
 // gearbox and a two-speed transfer case driving both axles. SI units throughout: metres,
 // kilograms, seconds, newtons, radians.
 //
@@ -47,13 +47,15 @@
 // - Ground of any shape: a tire touches it where it comes nearest the hub, so on a slope the
 //   ground pushes back square to the slope and grip acts along it, and a tire meeting a log or a
 //   step is pushed back and up off its edge. The chassis can touch down too: the bumpers, the
-//   frame rails, the transfer case and the differentials scrape on whatever they hit.
+//   frame rails, the transfer case and the differentials scrape on whatever they hit, and rolling
+//   over, the body and roof. Its bumpers and sides hit tree trunks.
 // Left out for now: the leaf springs' wind-up under torque, the gyroscopic pull of the spinning
 // tires on the chassis, steering self-aligning torque, tire heat and wear, more than one point of
 // contact per tire.
 
-import { SURFACES, STRIP, TRACK_HALF, STRIPS, stripIndexAt, stripAt, surfaceAt, stripNear, STRIP_GROUND, COURSE } from "./ground.js";
-export { SURFACES, STRIP, TRACK_HALF, STRIPS, stripIndexAt, stripAt, surfaceAt, stripNear, STRIP_GROUND, COURSE };
+import { SURFACES, STRIP, TRACK_HALF, STRIPS, stripIndexAt, stripAt, surfaceAt, stripNear, STRIP_GROUND } from "./ground.js";
+import { MOUNTAIN } from "./mountain.js";
+export { SURFACES, STRIP, TRACK_HALF, STRIPS, stripIndexAt, stripAt, surfaceAt, stripNear, STRIP_GROUND, MOUNTAIN };
 
 const INCH = 0.0254;
 
@@ -89,7 +91,7 @@ export const CAR = {
   steerRate: { slow: 0.3, fast: 0.55, after: 0.3, ramp: 1.2, centre: 0.6, centreAt: 5 },
   // The throttle the same way: a press opens it to `start`, holding it opens it the rest of the
   // way over `ramp` seconds after `after`; let go, it closes in `release` seconds.
-  throttleRamp: { start: 0.25, after: 0.3, ramp: 1.5, release: 0.15 },
+  throttleRamp: { start: 0.25, after: 0.3, ramp: 1.5, release: 0.7 },
   steeringRatio: 20, // turns of the steering wheel to the front tires' (recirculating ball)
   rightHandDrive: true, // as in Pakistan, Japan and Australia
   dragArea: 0.65 * 2.6, // Cd times frontal area: a brick with a windscreen
@@ -285,7 +287,27 @@ const SKIDS = [
   ...[-0.7, 0.7].map((x) => [x, 0.07, 1.98]),
   ...[-1.4, -0.5, 0.4, 1.4].flatMap((z) => [-0.42, 0.42].map((x) => [x, 0.045, z])),
   [0, -0.06, 0.1],
+  // Rolling over: the fenders, the tub's top corners, the roof's corners.
+  ...[-0.84, 0.84].flatMap((x) => [
+    [x, 0.72, -1.68],
+    [x, 0.86, 0.3],
+    [x, 0.86, 1.9],
+    [x, 1.6, -0.55],
+    [x, 1.6, 1.85],
+  ]),
+  [0, 0.84, -1.7],
 ];
+// The body's outline, seen from above, for hitting trees: the front bumper, the sides, the back;
+// each from one point to another (car axes, as above).
+const SIDES = [
+  [[-0.82, 0.12, -1.84], [0.82, 0.12, -1.84]],
+  [[-0.84, 0.6, -1.8], [-0.84, 0.6, 1.96]],
+  [[0.84, 0.6, -1.8], [0.84, 0.6, 1.96]],
+  [[-0.8, 0.5, 1.98], [0.8, 0.5, 1.98]],
+];
+const TRUNK_STIFFNESS = 1.5e6;
+const TRUNK_DAMPING = 30e3;
+const TRUNK_FRICTION = 0.4;
 const DIFF_DROP = 0.14; // the FJ40's 21 cm of clearance under the differentials
 const DIFF_OFFSET = 0.1;
 const SKID_STIFFNESS = 2e6; // steel against the ground, N/m
@@ -294,6 +316,15 @@ const SKID_FRICTION = 0.45;
 const MAX_SPIN = 15; // rad/s
 const MAX_AXLE = 25; // m/s, and per second of slope
 
+// Lengths, quicker than Math.hypot.
+const hyp = (a, b) => Math.sqrt(a * a + b * b);
+const hyp3 = (a, b, c) => Math.sqrt(a * a + b * b + c * c);
+const lenOf = (v) => {
+  let s = 0;
+  for (let i = 0; i < v.length; i++) s += v[i] * v[i];
+  return Math.sqrt(s);
+};
+
 // Small vector helpers on [x, y, z] arrays.
 const add = (a, b) => [a[0] + b[0], a[1] + b[1], a[2] + b[2]];
 const sub = (a, b) => [a[0] - b[0], a[1] - b[1], a[2] - b[2]];
@@ -301,16 +332,16 @@ const mul = (a, s) => [a[0] * s, a[1] * s, a[2] * s];
 const dot = (a, b) => a[0] * b[0] + a[1] * b[1] + a[2] * b[2];
 const cross = (a, b) => [a[1] * b[2] - a[2] * b[1], a[2] * b[0] - a[0] * b[2], a[0] * b[1] - a[1] * b[0]];
 const norm = (a) => {
-  const l = Math.hypot(a[0], a[1], a[2]);
+  const l = hyp3(a[0], a[1], a[2]);
   return l > 0 ? mul(a, 1 / l) : [0, 0, 0];
 };
 
 export class Sim {
   // options are for checking the model: rolling and air resistance can be switched off.
-  // options.ground is the ground to drive on (see ground.js); the off-road course by default.
+  // options.ground is the ground to drive on: the mountain, unless the checks want the flat strips.
   constructor(settings = DEFAULTS, options = {}) {
     this.options = { rolling: true, air: true, ...options };
-    this.ground = this.options.ground || COURSE;
+    this.ground = this.options.ground || MOUNTAIN;
     this.time = 0; // never reset, so anything timed by it carries on through a reset
     this.wheels = WHEELS.map((w) => ({ ...w, spin: 0, angle: 0, steer: 0, contact: null }));
     this.modes = [];
@@ -460,38 +491,52 @@ export class Sim {
     this.air = this.options.air ? world.air : 0;
   }
 
-  // Puts the car `along` metres down the track, square across it, dropped from `height` above
-  // the highest ground under its tires, still.
+  // Puts the car `along` metres down the flat track, square across it (for the checks).
   reset(along, height = 0) {
+    this.place(0, -along, 0, height);
+  }
+
+  // Puts the car with its centre of mass over (x, z), facing `heading` (0 north, up -z; positive
+  // turned left), sat on the slope of the ground under its tires, `height` above it, still.
+  place(x, z, heading = 0, height = 0) {
     const sag = (this.mass * this.g) / 4 / this.kTire; // tires squashed under its weight
+    const cos = Math.cos(heading);
+    const sin = Math.sin(heading);
+    // A point in the car's own axes (level, from its centre of mass) on the ground.
+    const world = (lx, lz) => [x + lx * cos + lz * sin, z - lx * sin + lz * cos];
+    const at = (w, ahead = 0) => world(w.at[0] - this.centre[0], w.at[2] - this.centre[2] - ahead);
     // The ground under each tire, and the slope that makes along the car and across it; then high
-    // enough to clear anything near a tire that stands up off that slope, a log or a step.
-    const z = (w) => -along + w.at[2] - this.centre[2];
-    const under = WHEELS.map((w) => this.ground.height(w.at[0], z(w)));
+    // enough to clear anything near a tire that stands up off that slope, a log or a stone.
+    const under = WHEELS.map((w) => this.ground.height(...at(w)));
     const [fl, fr, rl, rr] = under;
+    const grade = ((fl + fr - rl - rr) / 2) / CAR.wheelbase; // rise per metre ahead
     let clear = 0;
     WHEELS.forEach((w, i) => {
-      const grade = (w.front ? fl + fr - rl - rr : rl + rr - fl - fr) / 2 / CAR.wheelbase; // rise per metre ahead
-      for (const dz of [-0.3, -0.15, 0.15, 0.3]) clear = Math.max(clear, this.ground.height(w.at[0], z(w) + dz) - (under[i] - dz * (w.front ? grade : -grade)));
+      for (const ahead of [-0.3, -0.15, 0.15, 0.3]) clear = Math.max(clear, this.ground.height(...at(w, ahead)) - (under[i] + ahead * grade));
     });
     height += clear;
-    const pitch = Math.atan(((fl + fr) / 2 - (rl + rr) / 2) / CAR.wheelbase); // nose up
+    const pitch = Math.atan(grade); // nose up
     const roll = Math.atan(((fr + rr) / 2 - (fl + rl) / 2) / CAR.frontTrack); // right side up
     const half = (a) => [Math.cos(a / 2), Math.sin(a / 2)];
     const [pc, ps] = half(pitch);
     const [rc, rs] = half(roll);
-    this.q = [pc * rc, ps * rc, -ps * rs, pc * rs]; // pitched about x, then rolled about the car's z
+    const [yc, ys] = half(heading);
+    // Pitched about x, then rolled about the car's z, then turned about the world's up.
+    const [w2, x2, y2, z2] = [pc * rc, ps * rc, -ps * rs, pc * rs];
+    this.q = [yc * w2 - ys * y2, yc * x2 + ys * z2, yc * y2 + ys * w2, yc * z2 - ys * x2];
     this.v = [0, 0, 0];
     this.L = [0, 0, 0]; // the body's angular momentum
-    this.p = [0, 0, -along];
+    this.p = [x, 0, z];
     this.update();
-    // The middle between the axles at hub height, its tires' squash above the ground's slope
-    // where it ends up (tipping it about its centre of mass moves it along a little).
+    // The middle between the axles at hub height, its tires' squash above the ground's slope where
+    // it ends up (tipping it about its centre of mass moves it a little).
     const fromMiddle = this.toWorld(this.centre);
-    const moved = fromMiddle[2] - this.centre[2]; // further along the track
-    const ground = under.reduce((sum, h) => sum + h, 0) / 4 + Math.tan(pitch) * moved - Math.tan(roll) * fromMiddle[0];
+    const level = world(-this.centre[0], -this.centre[2]);
+    const dx = x - fromMiddle[0] - level[0];
+    const dz = z - fromMiddle[2] - level[1];
+    const ground = (fl + fr + rl + rr) / 4 + Math.tan(pitch) * (-dx * sin - dz * cos) + Math.tan(roll) * (dx * cos - dz * sin);
     const middle = ground + (R - sag) / Math.cos(pitch) / Math.cos(roll) + height;
-    this.p = [0, middle + fromMiddle[1], -along];
+    this.p = [x, middle + fromMiddle[1], z];
     this.update();
     for (const a of this.axles) {
       a.y = this.p[1] + this.toWorld(a.attach)[1];
@@ -580,7 +625,7 @@ export class Sim {
 
   // How steeply the body's own across slopes, right side up: tan of its roll, capped.
   get bodySlope() {
-    return Math.max(-2, Math.min(2, this.ax[1] / Math.hypot(this.ax[0], this.ax[2])));
+    return Math.max(-2, Math.min(2, this.ax[1] / hyp(this.ax[0], this.ax[2])));
   }
 
   // On its side or its roof: over 70° from upright.
@@ -855,7 +900,7 @@ export class Sim {
       const n = norm([-slopeX, 1, -slopeZ]);
       const push = Math.max(0, SKID_STIFFNESS * into * n[1] - SKID_DAMPING * dot(moving, n));
       const slide = sub(moving, mul(n, dot(moving, n)));
-      const speed = Math.hypot(...slide);
+      const speed = lenOf(slide);
       return add(mul(n, push), mul(slide, (-SKID_FRICTION * push) / Math.max(speed, 0.1)));
     };
     for (const local of SKIDS) {
@@ -865,6 +910,36 @@ export class Sim {
       const J = mul(f, h);
       this.v = add(this.v, [J[0] / this.mass, J[1] / this.sprungMass, J[2] / this.mass]);
       this.L = add(this.L, cross(r, J));
+    }
+    // Tree trunks: wherever the body's outline reaches into one, the trunk pushes it back out,
+    // and it scrapes along.
+    const trees = g.treesNear ? g.treesNear(this.p[0], this.p[2]) : [];
+    if (trees.length) {
+      const ends = SIDES.map(([a, b]) => [this.toWorld(sub(a, this.centre)), this.toWorld(sub(b, this.centre))]);
+      for (const t of trees) {
+        if (hyp(t.x - this.p[0], t.z - this.p[2]) > 2.6 + t.r) continue;
+        for (const [a, b] of ends) {
+          // The point of this edge nearest the trunk, seen from above.
+          const ax = this.p[0] + a[0];
+          const az = this.p[2] + a[2];
+          const ex = b[0] - a[0];
+          const ez = b[2] - a[2];
+          const f = Math.max(0, Math.min(1, ((t.x - ax) * ex + (t.z - az) * ez) / (ex * ex + ez * ez)));
+          const r = add(a, mul(sub(b, a), f));
+          const nx = this.p[0] + r[0] - t.x;
+          const nz = this.p[2] + r[2] - t.z;
+          const d = hyp(nx, nz);
+          const y = this.p[1] + r[1];
+          if (d >= t.r || d < 1e-6 || y < t.base - 0.3 || y > t.base + t.height) continue;
+          const n = [nx / d, 0, nz / d];
+          const moving = add(this.v, cross(this.w, r));
+          const push = Math.max(0, TRUNK_STIFFNESS * (t.r - d) - TRUNK_DAMPING * dot(moving, n));
+          const slide = sub(moving, mul(n, dot(moving, n)));
+          const J = mul(add(mul(n, push), mul(slide, (-TRUNK_FRICTION * push) / Math.max(lenOf(slide), 0.1))), h);
+          this.v = add(this.v, [J[0] / this.mass, J[1] / this.sprungMass, J[2] / this.mass]);
+          this.L = add(this.L, cross(r, J));
+        }
+      }
     }
     for (const a of this.axles) {
       const frame = this.axleFrame(a);
@@ -990,7 +1065,7 @@ export class Sim {
 
     // Gravity and air drag on the body; the springs and shocks between it and the axles; the
     // ground pushing up on the axles through the tires.
-    const speed = Math.hypot(...this.v);
+    const speed = lenOf(this.v);
     const dragPerSpeed = 0.5 * this.air * CAR.dragArea * speed;
     this.drag = dragPerSpeed * speed;
     let force = [-dragPerSpeed * this.v[0], -this.sprungMass * this.g - dragPerSpeed * this.v[1], -dragPerSpeed * this.v[2]];
@@ -1075,7 +1150,7 @@ export class Sim {
       c.tread = tread;
       // Rolling, grip builds up along the slip curve. Barely moving, a tire holds by flexing its
       // tread rather than sliding, so it grips up to its peak at once: it can stand on a slope.
-      const slip = Math.hypot(along, across) / ref;
+      const slip = hyp(along, across) / ref;
       const still = ref === CREEP_SPEED && slip < c.surface.slipAtPeak;
       c.limit = (still ? c.surface.peak : c.surface.grip(slip)) * TIRE.grip * c.normal * h;
     }
@@ -1101,7 +1176,7 @@ export class Sim {
       const last = c.wheel.lastGrip;
       if (!last) continue;
       let start = sub(last, mul(c.n, dot(last, c.n))); // along this ground
-      const size = Math.hypot(...start);
+      const size = lenOf(start);
       if (size > c.limit) start = mul(start, c.limit / size);
       c.impulse = start;
       this.push(c, start);
@@ -1116,13 +1191,13 @@ export class Sim {
       const changes = touching.map((c) => {
         const tread = this.treadVelocity(c, c.wheel.spin);
         const slide = sub(tread, mul(c.n, dot(tread, c.n))); // along the ground
-        const slipSpeed = Math.hypot(...slide);
+        const slipSpeed = lenOf(slide);
         let want = c.impulse;
         if (slipSpeed > 1e-12) {
           const dir = mul(slide, -1 / slipSpeed);
           want = add(c.impulse, mul(dir, (relax * slipSpeed) / this.inverseMassAt(c, dir)));
         }
-        const size = Math.hypot(...want);
+        const size = lenOf(want);
         if (size > c.limit) want = mul(want, c.limit / size);
         return sub(want, c.impulse);
       });
@@ -1159,7 +1234,7 @@ export class Sim {
       c.soilDrag = share * c.normal;
       const r = sub(c.centre, this.p);
       const moving = add(this.v, cross(this.w, r));
-      const s = Math.hypot(moving[0], moving[2]);
+      const s = hyp(moving[0], moving[2]);
       if (s < 1e-9) continue;
       const dir = [-moving[0] / s, 0, -moving[2] / s];
       const impulse = mul(dir, Math.min(c.soilDrag * h, s / this.inverseMassAtHub(r, dir)));
@@ -1179,7 +1254,7 @@ export class Sim {
       qy + half * (wy * qw + wz * qx - wx * qz),
       qz + half * (wz * qw + wx * qy - wy * qx),
     ];
-    const ql = Math.hypot(...q);
+    const ql = lenOf(q);
     this.q = q.map((v) => v / ql);
     this.update();
     for (const a of this.axles) {
@@ -1191,8 +1266,8 @@ export class Sim {
     this.engineAngle += (this.rpm / RPM) * h;
 
     this.time += h;
-    this.moved += Math.hypot(this.v[0], this.v[2]) * h;
-    const spinning = Math.hypot(...this.w);
+    this.moved += hyp(this.v[0], this.v[2]) * h;
+    const spinning = lenOf(this.w);
     if (spinning > MAX_SPIN) {
       this.L = mul(this.L, MAX_SPIN / spinning);
       this.w = this.inverseInertia(this.L);

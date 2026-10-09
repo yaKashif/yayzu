@@ -4,9 +4,10 @@
 // two turns of the crank: 40 a second at idle, 200 at the governor. Each pulse is a short puff of
 // pressure, a little stronger or weaker and a little early or late cylinder to cylinder, and the
 // exhaust pipe and silencer ring with it. More throttle, harder pulses and a brighter sound; off the
-// throttle, a softer burble. The tires: a hiss that rises with speed and the hum of the tread
-// blocks; a crunch of stones on gravel and dirt, a swish in sand, grass and mud; a squeal when
-// they slide on hard ground, a scrabble when they slide on loose; and a thump when one lands hard.
+// throttle, a softer burble. The tires: on hard ground a hiss that rises with speed and the hum of
+// the tread blocks; on a dirt road a low rumble and now and then a stone popping out from under
+// the tread; a crunch on loose stones; a faint hush on grass, sand and mud; a squeal when they
+// slide on hard ground, a scrabble when they slide on loose; and a thump when one lands hard.
 //
 // The sound is worked out a sample at a time in an audio worklet, away from the page's own work;
 // the game sends it what's happening each frame.
@@ -46,7 +47,7 @@ const toward = (hz) => 1 - Math.exp((-TAU * hz) / sampleRate);
 class NaseebSound extends AudioWorkletProcessor {
   constructor() {
     super();
-    this.want = { rpm: 800, load: 0, roll: 0, hard: 0, lug: 0, squeal: 0, scrub: 0, crunch: 0, soft: 0, inside: 0 };
+    this.want = { rpm: 800, load: 0, roll: 0, hard: 0, dirt: 0, lug: 0, squeal: 0, scrub: 0, crunch: 0, soft: 0, inside: 0 };
     this.is = { ...this.want };
     this.thump = 0;
     this.port.onmessage = (e) => {
@@ -71,6 +72,7 @@ class NaseebSound extends AudioWorkletProcessor {
     this.hissLow = new Smooth();
     this.hissHigh = new Smooth();
     this.swish = new Smooth();
+    this.rumble = [new Smooth(), new Smooth()];
     this.stones = [new Ring(2300, 1.6), new Ring(3600, 2.2)];
     this.squealAt = 0;
     this.wobble = 0;
@@ -105,7 +107,8 @@ class NaseebSound extends AudioWorkletProcessor {
     }
     const toneFade = Math.exp(-1 / (sampleRate * 0.12));
     const gritFade = Math.exp(-1 / (sampleRate * 0.018));
-    const stoneRate = (s.crunch * 420) / sampleRate;
+    // Stones: a steady crackle on loose ground, the odd one on a dirt road.
+    const stoneRate = (s.crunch * 150 + s.dirt * s.roll * 22) / sampleRate;
     for (let i = 0; i < n; i++) {
       // The engine.
       this.cycle += rpm / 120 / sampleRate;
@@ -129,15 +132,17 @@ class NaseebSound extends AudioWorkletProcessor {
       // The tires: hiss and tread hum with speed.
       const white = this.noise();
       const band = this.hissHigh.run(white, toward(1100)) - this.hissLow.run(white, toward(220));
-      let tires = band * s.roll * (0.18 + 0.25 * s.hard);
+      let tires = band * s.roll * (0.03 + 0.22 * s.hard);
+      // A dirt road: a low rumble through the tires.
+      tires += this.rumble[1].run(this.rumble[0].run(white, toward(150)), toward(150)) * s.roll * s.dirt * 1.4;
       this.lugAt += s.lug / sampleRate;
       this.lugAt -= Math.floor(this.lugAt);
       tires += (this.lugAt - 0.5) * s.roll * s.hard * 0.06;
       // Stones and grit cracking under the tread.
       const hit = this.noise() * 0.5 + 0.5 < stoneRate ? (0.4 + 0.6 * (this.noise() * 0.5 + 0.5)) * 3 : 0;
-      tires += (this.stones[0].run(hit) + this.stones[1].run(hit * 0.6)) * 0.5;
+      tires += (this.stones[0].run(hit) + this.stones[1].run(hit * 0.6)) * 0.22;
       // Sand, grass and mud.
-      tires += this.swish.run(white, toward(380)) * s.soft * 0.9;
+      tires += this.swish.run(white, toward(300)) * s.soft * s.roll * 0.35;
       // Sliding: a squeal on hard ground, a scrabble on loose.
       if (s.squeal > 0.002) {
         this.wobble += (TAU * 7) / sampleRate;
@@ -146,7 +151,7 @@ class NaseebSound extends AudioWorkletProcessor {
         const grain = 0.6 + 0.4 * this.squealGrain.run(white, toward(40)) * 4;
         tires += (Math.sin(TAU * this.squealAt) + 0.35 * Math.sin(2 * TAU * this.squealAt)) * grain * s.squeal * 0.22;
       }
-      tires += this.scrabble.run(white) * s.scrub * 0.6;
+      tires += this.scrabble.run(white) * s.scrub * 0.35;
       // A tire landing hard: a boom from the axle and the body's panels, and a crack of grit.
       this.thudAt += 55 / sampleRate;
       this.thudAt -= Math.floor(this.thudAt);
@@ -164,8 +169,8 @@ class NaseebSound extends AudioWorkletProcessor {
 registerProcessor("naseeb-sound", NaseebSound);
 `;
 
-// How each surface sounds under a tire: hard (hums, squeals), stones (crunch), soft (swish), or
-// slick (quiet).
+// How each surface sounds under a tire: hard (hums, squeals), dirt (rumbles), stones (crunch),
+// soft (hushes), or slick (quiet).
 const KIND = {
   asphalt: "hard",
   concrete: "hard",
@@ -176,7 +181,8 @@ const KIND = {
   mud: "soft",
   snow: "soft",
   ice: "slick",
-  dirt: "stones",
+  dirt: "dirt",
+  loose: "stones",
   rock: "hard",
   wood: "hard",
 };
@@ -237,6 +243,7 @@ export class Sound {
     let scrub = 0;
     let hard = 0;
     let stones = 0;
+    let dirt = 0;
     let soft = 0;
     let thump = 0;
     sim.wheels.forEach((w, i) => {
@@ -254,6 +261,7 @@ export class Sound {
         squeal += sliding;
       } else if (kind !== "slick") scrub += sliding;
       if (kind === "stones") stones += 0.25;
+      if (kind === "dirt") dirt += 0.25;
       if (kind === "soft") soft += 0.25;
     });
     const speed = Math.hypot(sim.v[0], sim.v[2]);
@@ -262,11 +270,12 @@ export class Sound {
       load: clamp(sim.engineTorque / PEAK_TORQUE),
       roll: clamp(speed / 22),
       hard,
+      dirt,
       lug: (speed / TREAD_PITCH) * rate,
       squeal: clamp(squeal / 2),
       scrub: clamp(scrub / 2),
       crunch: stones * clamp(speed / 6),
-      soft: soft * clamp(speed / 8),
+      soft,
       inside: inside ? 1 : 0,
       thump,
     });

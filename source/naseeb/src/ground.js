@@ -48,6 +48,8 @@ export const SURFACES = [
   { id: "dirt", name: "Packed dirt", peak: 0.75, slide: 0.6, slipAtPeak: 0.15, hysteresis: 1.05, give: 1.2e6, damping: 0.4 },
   { id: "rock", name: "Rock", peak: 0.85, slide: 0.7, slipAtPeak: 0.1, hysteresis: 1, give: Infinity, damping: 0.15 },
   { id: "wood", name: "Logs", peak: 0.65, slide: 0.5, slipAtPeak: 0.1, hysteresis: 1, give: Infinity, damping: 0.2 },
+  // The mountain road's cuts and banks: loose earth and stones.
+  { id: "loose", name: "Loose earth", peak: 0.55, slide: 0.48, slipAtPeak: 0.25, hysteresis: 1.1, give: 350e3, damping: 0.6 },
 ];
 for (const s of SURFACES) s.grip = slipCurve(s.peak, s.slide, s.slipAtPeak);
 const byId = (id) => SURFACES.find((s) => s.id === id);

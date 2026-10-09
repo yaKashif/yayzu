@@ -1,10 +1,15 @@
-// Draws Naseeb in 3D with three.js: the jeep, the off-road course it drives (shaped as the physics
-// has it), what its tires throw up and leave behind, and the forces on them. The camera follows
-// from behind. The physics uses three.js's axes, so its positions and orientation go straight in.
+// Draws Naseeb in 3D with three.js: the jeep, the mountain it climbs (see landscape.js), the sky
+// and the country all round (sky.js), what its tires throw up and leave behind, and the forces on
+// them. The physics uses three.js's axes, so its positions and orientation go straight in.
 import * as THREE from "three";
-import { TIRE, CAR, PARTS, WHEELS, SURFACES, TRACK_HALF, COURSE } from "./physics.js";
-import { SHOULDER } from "./ground.js";
+import { TIRE, CAR, PARTS, WHEELS, SURFACES, MOUNTAIN } from "./physics.js";
+import { TIMES, AIR, applyTime, outdoors, drift } from "./atmosphere.js";
+import { Landscape } from "./landscape.js";
+import { Background } from "./sky.js";
+import { Post } from "./post.js";
+import { cloudTexture } from "./textures.js";
 import { buildBody } from "./body.js";
+import { mergeStatic } from "./merge.js";
 
 const R = TIRE.radius;
 const RB = TIRE.rimRadius;
@@ -12,17 +17,12 @@ const F = TIRE.flangeRadius;
 const HALF_WIDTH = TIRE.width / 2;
 const TREAD_DEPTH = 0.012;
 const TREAD_BLOCKS = 34;
-const TRACK_WIDTH = 2 * TRACK_HALF; // metres across the strips of surface
-const TEX = 512; // ground texture pixels a metre; each ground texture is a metre square
-const AHEAD = 70; // metres of track drawn ahead of the tire
-const CHUNK = 8; // metres of course in each piece of ground drawn
 // The default camera: chasing from behind and well above, aimed past the car at the road ahead.
 const CHASE = { mode: "chase", yaw: 0, pitch: 0.23, dist: 10.7 };
 const CHASE_AHEAD = 5; // metres ahead of the car the chase camera looks
 const isTouch = window.matchMedia("(pointer: coarse)").matches;
 // Pixels drawn per CSS pixel at most; main.js lowers it while frames run slow (see adaptResolution).
 const maxPixelRatio = () => Math.min(window.devicePixelRatio || 1, isTouch ? 1.5 : 2);
-const BEHIND = 14; // and behind
 
 // How each surface looks: colours, how glossy it is, what the tire leaves on it and throws up.
 const LOOKS = {
@@ -38,15 +38,10 @@ const LOOKS = {
   dirt: { base: "#8a6f52", specks: ["#7a6147", "#9c8163", "#6b5440", "#a88d6c"], rough: 0.95, bump: 1.6, mark: [0.34, 0.25, 0.17], chip: "#8a6f52", throws: "dirt" },
   rock: { base: "#8d8a84", specks: ["#7a7771", "#a3a09a", "#68655f", "#b5b2ab"], rough: 0.85, bump: 2, mark: [0.2, 0.2, 0.2], chip: "#8d8a84", throws: "dust" },
   wood: { base: "#6b4a2e", specks: ["#5a3d25", "#7d5838", "#4a311d"], rough: 0.9, bump: 2, mark: [0.25, 0.18, 0.12], chip: "#6b4a2e", throws: "dirt" },
+  loose: { base: "#7d6a55", specks: ["#6c5a47", "#8f7c66", "#5b4a3a", "#a3917b"], rough: 0.95, bump: 2, mark: [0.3, 0.23, 0.16], chip: "#7d6a55", throws: "stones" },
+  forest: { base: "#3d4a26", specks: ["#4a3a22", "#56632f", "#33401f", "#6b5534", "#2c361a"], rough: 1, bump: 1.5, mark: [0.3, 0.3, 0.2], chip: "#3d4a26", throws: "grass" },
 };
 export const surfaceColor = (id) => LOOKS[id].chip;
-
-const WORLD_LOOKS = {
-  earth: { top: "#4f97d6", horizon: "#d9ebf3", ground: "#6e8f52", sun: 2.6, hemi: 0.9, fog: [30, 160] },
-  mars: { top: "#8a5c42", horizon: "#e2b48a", ground: "#9c6a4c", sun: 2.0, hemi: 0.8, fog: [25, 130] },
-  moon: { top: "#000000", horizon: "#0a0c12", ground: "#4b4b50", sun: 3.0, hemi: 0.25, fog: null },
-  jupiter: { top: "#6a5040", horizon: "#e2c49a", ground: "#8b6a4c", sun: 1.8, hemi: 0.8, fog: [20, 110] },
-};
 
 function rng(seed) {
   let a = seed >>> 0;
@@ -63,163 +58,6 @@ function makeCanvas(w, h) {
   const c = document.createElement("canvas");
   c.width = w;
   c.height = h;
-  return c;
-}
-
-// ---------- Ground textures: one metre square, seen from above, tiling seamlessly ----------
-
-function groundCanvas(id, seed) {
-  const look = LOOKS[id];
-  const n = TEX;
-  const c = makeCanvas(n, n);
-  const g = c.getContext("2d");
-  const rand = rng(seed);
-  // Draws at x, y and wherever it would wrap round to.
-  const wrap = (x, y, r, draw) => {
-    for (const dx of [0, n, -n]) {
-      for (const dy of [0, n, -n]) {
-        if (x + dx < -r || x + dx > n + r || y + dy < -r || y + dy > n + r) continue;
-        draw(x + dx, y + dy);
-      }
-    }
-  };
-  const pick = () => look.specks[(rand() * look.specks.length) | 0];
-  g.fillStyle = look.base;
-  g.fillRect(0, 0, n, n);
-
-  // Broad patches of lighter and darker, so the tiling doesn't show.
-  for (let i = 0; i < 18; i++) {
-    const x = rand() * n;
-    const y = rand() * n;
-    const r = 40 + rand() * 120;
-    g.fillStyle = rand() < 0.5 ? "rgba(0,0,0,0.05)" : "rgba(255,255,255,0.04)";
-    wrap(x, y, r, (x, y) => {
-      g.beginPath();
-      g.arc(x, y, r, 0, Math.PI * 2);
-      g.fill();
-    });
-  }
-
-  if (id === "grass") {
-    for (let i = 0; i < 16000; i++) {
-      const x = rand() * n;
-      const y = rand() * n;
-      const len = 4 + rand() * 9;
-      const a = rand() * Math.PI * 2;
-      g.strokeStyle = pick();
-      g.lineWidth = 1 + rand();
-      wrap(x, y, len, (x, y) => {
-        g.beginPath();
-        g.moveTo(x, y);
-        g.lineTo(x + Math.cos(a) * len, y + Math.sin(a) * len);
-        g.stroke();
-      });
-    }
-  } else if (id === "gravel") {
-    for (let i = 0; i < 5200; i++) {
-      const x = rand() * n;
-      const y = rand() * n;
-      const r = 2.5 + rand() * 6;
-      const rot = rand() * Math.PI;
-      const colour = pick();
-      wrap(x, y, r * 1.4, (x, y) => {
-        g.fillStyle = "rgba(0,0,0,0.35)";
-        g.beginPath();
-        g.ellipse(x + 1.2, y + 1.2, r * 1.3, r * 0.9, rot, 0, Math.PI * 2);
-        g.fill();
-        g.fillStyle = colour;
-        g.beginPath();
-        g.ellipse(x, y, r * 1.3, r * 0.9, rot, 0, Math.PI * 2);
-        g.fill();
-        g.fillStyle = "rgba(255,255,255,0.18)";
-        g.beginPath();
-        g.ellipse(x - r * 0.3, y - r * 0.3, r * 0.5, r * 0.35, rot, 0, Math.PI * 2);
-        g.fill();
-      });
-    }
-  } else {
-    const count = id === "snow" || id === "ice" ? 2500 : 14000;
-    for (let i = 0; i < count; i++) {
-      const x = rand() * n;
-      const y = rand() * n;
-      const r = 0.6 + rand() * (id === "asphalt" || id === "wet" ? 2.2 : 1.5);
-      g.fillStyle = pick();
-      g.globalAlpha = 0.45 + rand() * 0.55;
-      wrap(x, y, r, (x, y) => {
-        g.beginPath();
-        g.arc(x, y, r, 0, Math.PI * 2);
-        g.fill();
-      });
-    }
-    g.globalAlpha = 1;
-  }
-
-  if (id === "concrete") {
-    // An expansion joint across the slab every metre.
-    g.fillStyle = "rgba(80,78,72,0.7)";
-    g.fillRect(0, 0, n, 3);
-  } else if (id === "sand") {
-    // Wind ripples running across the track.
-    g.strokeStyle = "rgba(255,240,210,0.16)";
-    g.lineWidth = 2.5;
-    for (let k = 0; k < 9; k++) {
-      const y0 = (k / 9) * n + rand() * 10;
-      const phase = rand() * 6;
-      g.beginPath();
-      for (let x = 0; x <= n; x += 8) g.lineTo(x, y0 + Math.sin((x / n) * Math.PI * 4 + phase) * 9 + Math.sin((x / n) * Math.PI * 10 + k) * 3);
-      g.stroke();
-    }
-  } else if (id === "wet" || id === "mud") {
-    // Standing water: darker, smoother pools.
-    g.fillStyle = id === "wet" ? "rgba(10,14,20,0.45)" : "rgba(30,20,12,0.45)";
-    for (let i = 0; i < 7; i++) {
-      const x = rand() * n;
-      const y = rand() * n;
-      const rx = 30 + rand() * 90;
-      const ry = 20 + rand() * 50;
-      wrap(x, y, rx, (x, y) => {
-        g.beginPath();
-        g.ellipse(x, y, rx, ry, rand() * 3, 0, Math.PI * 2);
-        g.fill();
-      });
-    }
-  } else if (id === "ice") {
-    g.strokeStyle = "rgba(255,255,255,0.75)";
-    g.lineWidth = 1.2;
-    for (let i = 0; i < 24; i++) {
-      let x = rand() * n;
-      let y = rand() * n;
-      g.beginPath();
-      g.moveTo(x, y);
-      for (let j = 0; j < 5; j++) {
-        x += (rand() - 0.5) * 70;
-        y += (rand() - 0.5) * 70;
-        g.lineTo(x, y);
-      }
-      g.stroke();
-    }
-    g.fillStyle = "rgba(255,255,255,0.25)";
-    for (let i = 0; i < 30; i++) {
-      const x = rand() * n;
-      const y = rand() * n;
-      wrap(x, y, 80, (x, y) => {
-        g.beginPath();
-        g.ellipse(x, y, 20 + rand() * 60, 2 + rand() * 4, rand() * 3, 0, Math.PI * 2);
-        g.fill();
-      });
-    }
-  } else if (id === "snow") {
-    g.fillStyle = "rgba(160,185,220,0.18)";
-    for (let i = 0; i < 40; i++) {
-      const x = rand() * n;
-      const y = rand() * n;
-      wrap(x, y, 60, (x, y) => {
-        g.beginPath();
-        g.ellipse(x, y, 20 + rand() * 50, 10 + rand() * 30, rand() * 3, 0, Math.PI * 2);
-        g.fill();
-      });
-    }
-  }
   return c;
 }
 
@@ -459,6 +297,8 @@ function buildWheel(maxAniso) {
   blur.position.x = 0.05;
   wheel.add(blur);
 
+  // The parts that turn with the spinner, joined (the tire apart: it bulges as it's squashed).
+  mergeStatic(spinner, new Set([tire]));
   return { wheel, spinner, tire, blur };
 }
 
@@ -474,6 +314,8 @@ const PARTICLES = {
   snow: { colour: [0.96, 0.97, 0.99], size: [0.006, 0.015], grow: 0, life: [0.6, 1.2], drag: 1.2, lift: 0, alpha: 1, soft: 0 },
   frost: { colour: [1, 1, 1], size: [0.004, 0.008], grow: 0, life: [0.3, 0.6], drag: 1.5, lift: 0, alpha: 0.9, soft: 0 },
   dust: { colour: [0.78, 0.7, 0.58], size: [0.06, 0.1], grow: 0.2, life: [0.8, 1.2], drag: 3, lift: 0.15, alpha: 0.3, soft: 1, max: 40 },
+  // Dust raised off a dry road by the tires rolling, hanging behind the jeep and drifting up.
+  trail: { colour: [0.68, 0.62, 0.54], size: [0.45, 0.75], grow: 0.85, life: [2.4, 4], drag: 1.6, lift: 0.22, alpha: 0.16, soft: 1, max: 140 },
   dirt: { colour: [0.42, 0.32, 0.22], size: [0.006, 0.016], grow: 0, life: [0.8, 1.4], drag: 0.6, lift: 0, alpha: 1, soft: 0 },
 };
 // Smoke and dust are big and see-through, so every one costs a lot of pixels; they have their own
@@ -536,9 +378,10 @@ class Marks {
       last.x1 = x1;
       last.z1 = z1;
       last.born = now;
+      last.ys = null;
       return;
     }
-    const mark = { x0, z0, x1, z1, rgb, alpha, fade, born: now };
+    const mark = { x0, z0, x1, z1, rgb, alpha, fade, born: now, ys: null };
     this.list.push(mark);
     this.lastOf[tire] = mark;
     if (this.list.length > MAX_MARKS) this.list.shift();
@@ -558,11 +401,8 @@ class Marks {
       const nx = (-dz / len) * w;
       const nz = (dx / len) * w;
       const corners = [m.x0 - nx, m.z0 - nz, m.x0 + nx, m.z0 + nz, m.x1 - nx, m.z1 - nz, m.x1 + nx, m.z1 + nz];
-      for (let v = 0; v < 4; v++) {
-        const x = corners[v * 2];
-        const z = corners[v * 2 + 1];
-        p.set([x, ground.height(x, z) + 0.006, z], n * 12 + v * 3);
-      }
+      if (!m.ys) m.ys = [0, 1, 2, 3].map((v) => ground.height(corners[v * 2], corners[v * 2 + 1]) + 0.006);
+      for (let v = 0; v < 4; v++) p.set([corners[v * 2], m.ys[v], corners[v * 2 + 1]], n * 12 + v * 3);
       for (let v = 0; v < 4; v++) c.set([m.rgb[0], m.rgb[1], m.rgb[2], alpha], n * 16 + v * 4);
       n++;
     }
@@ -586,7 +426,7 @@ class Particles {
     geo.setDrawRange(0, 0);
     this.geo = geo;
     this.material = new THREE.ShaderMaterial({
-      uniforms: { scale: { value: 800 }, biggest: { value: 200 } },
+      uniforms: { scale: { value: 800 }, biggest: { value: 200 }, light: { value: new THREE.Color(1, 1, 1) } },
       vertexShader: `
         attribute vec4 tint;
         attribute vec2 look; // size in metres, softness
@@ -602,13 +442,16 @@ class Particles {
           vSoft = look.y;
         }`,
       fragmentShader: `
+        uniform vec3 light;
         varying vec4 vTint;
         varying float vSoft;
         void main() {
           float r = length(gl_PointCoord - 0.5);
           float edge = mix(1.0 - smoothstep(0.38, 0.5, r), 1.0 - smoothstep(0.0, 0.5, r), vSoft);
           if (edge <= 0.0) discard;
-          gl_FragColor = vec4(vTint.rgb, vTint.a * edge);
+          gl_FragColor = vec4(pow(vTint.rgb, vec3(2.2)) * light, vTint.a * edge);
+          #include <tonemapping_fragment>
+          #include <colorspace_fragment>
         }`,
       transparent: true,
       depthWrite: false,
@@ -648,7 +491,8 @@ class Particles {
       p.y += p.vy * dt;
       p.z += p.vz * dt;
       p.size += spec.grow * dt;
-      const floor = spec.lift ? -Infinity : ground.height(p.x, p.z) + 0.003;
+      if (!spec.lift && (p.floor === undefined || (p.check = (p.check || 0) + 1) % 6 === 0)) p.floor = ground.height(p.x, p.z) + 0.003;
+      const floor = spec.lift ? -Infinity : p.floor;
       if (p.y < floor) {
         // Bits that land stay a moment, then go.
         p.y = floor;
@@ -709,209 +553,43 @@ export class World {
     this.canvas = canvas;
     const renderer = new THREE.WebGLRenderer({ canvas, antialias: true, powerPreference: "high-performance" });
     renderer.outputColorSpace = THREE.SRGBColorSpace;
-    renderer.toneMapping = THREE.ACESFilmicToneMapping;
+    renderer.toneMapping = THREE.CustomToneMapping; // filmic, then graded (atmosphere.js)
     renderer.toneMappingExposure = 1.0;
     renderer.shadowMap.enabled = true;
-    renderer.shadowMap.type = THREE.PCFShadowMap;
+    renderer.shadowMap.type = THREE.PCFSoftShadowMap;
     this.renderer = renderer;
     this.maxAniso = Math.min(4, renderer.capabilities.getMaxAnisotropy());
 
     const scene = new THREE.Scene();
     this.scene = scene;
-    this.camera = new THREE.PerspectiveCamera(45, 1, 0.05, 400);
+    this.camera = new THREE.PerspectiveCamera(45, 1, 0.05, 2200);
 
-    // Sky: a dome shaded from the horizon up.
-    this.skyUniforms = {
-      top: { value: new THREE.Color() },
-      horizon: { value: new THREE.Color() },
-      ground: { value: new THREE.Color() },
-    };
-    const sky = new THREE.Mesh(
-      new THREE.SphereGeometry(300, 32, 16),
-      new THREE.ShaderMaterial({
-        uniforms: this.skyUniforms,
-        side: THREE.BackSide,
-        depthWrite: false,
-        fog: false,
-        // It sits inside the far plane, so the depth test hides it wherever the ground or a tree is.
-        vertexShader: `
-          varying vec3 vDir;
-          void main() {
-            vDir = normalize(position);
-            gl_Position = projectionMatrix * modelViewMatrix * vec4(position, 1.0);
-          }`,
-        fragmentShader: `
-          uniform vec3 top;
-          uniform vec3 horizon;
-          uniform vec3 ground;
-          varying vec3 vDir;
-          void main() {
-            float h = vDir.y;
-            vec3 c = h > 0.0 ? mix(horizon, top, pow(min(1.0, h * 1.6), 0.7)) : mix(horizon, ground, min(1.0, -h * 8.0));
-            gl_FragColor = vec4(c, 1.0);
-            #include <colorspace_fragment>
-          }`,
-      }),
-    );
-    sky.renderOrder = 100; // drawn last, so it only shades what nothing else covers
-    this.sky = sky;
-    scene.add(sky);
-
-    // Stars, for the Moon.
-    const starPositions = [];
-    const srand = rng(5);
-    for (let i = 0; i < 600; i++) {
-      const u = srand() * Math.PI * 2;
-      const v = Math.acos(srand() * 0.95);
-      starPositions.push(Math.cos(u) * Math.sin(v) * 280, Math.cos(v) * 280, Math.sin(u) * Math.sin(v) * 280);
-    }
-    const starGeo = new THREE.BufferGeometry();
-    starGeo.setAttribute("position", new THREE.Float32BufferAttribute(starPositions, 3));
-    this.stars = new THREE.Points(starGeo, new THREE.PointsMaterial({ color: 0xffffff, size: 1.5, sizeAttenuation: false, fog: false }));
-    this.stars.renderOrder = 101;
-    scene.add(this.stars);
+    // The sky and the country all round, behind everything.
+    AIR.cloudMap.value = cloudTexture();
+    this.background = new Background(scene);
+    // Where the sun is, from the car (set by the time of day).
+    this.sunOffset = new THREE.Vector3(-30, 26, 18);
 
     this.hemi = new THREE.HemisphereLight(0xdfefff, 0x6e8f52, 0.9);
     scene.add(this.hemi);
-    const sun = new THREE.DirectionalLight(0xfff3e0, 2.6);
+    const sun = new THREE.DirectionalLight(0xffefd6, 2.9);
     sun.castShadow = true;
     sun.shadow.mapSize.set(isTouch ? 1024 : 2048, isTouch ? 1024 : 2048);
     const sc = sun.shadow.camera;
-    sc.left = -3.5;
-    sc.right = 3.5;
-    sc.top = 3.5;
-    sc.bottom = -3.5;
+    sc.left = -12;
+    sc.right = 12;
+    sc.top = 12;
+    sc.bottom = -12;
     sc.near = 0.5;
-    sc.far = 20;
-    sun.shadow.bias = -0.0004;
-    sun.shadow.normalBias = 0.01;
+    sc.far = 120;
+    sun.shadow.bias = -0.0003;
+    sun.shadow.normalBias = 0.02;
+    sun.shadow.radius = 3;
     scene.add(sun, sun.target);
     this.sun = sun;
 
-    // The course's ground, in 8 m pieces, each built the first time it's needed and placed wherever
-    // it comes round (see updateTrack).
-    this.groundMaterials = SURFACES.map(() => null);
-    this.chunks = new Map();
-    this.shown = new Set();
-
-    // The field either side of the course, level, beyond its shoulders.
-    const fieldCanvas = groundCanvas("grass", 99);
-    const fieldTex = new THREE.CanvasTexture(fieldCanvas);
-    fieldTex.wrapS = fieldTex.wrapT = THREE.RepeatWrapping;
-    fieldTex.colorSpace = THREE.SRGBColorSpace;
-    fieldTex.anisotropy = this.maxAniso;
-    this.fieldMaterial = new THREE.MeshLambertMaterial({ map: fieldTex, color: 0x9fb98a });
-    // The course's grass verges, the same grass to the same scale (one repeat every 2 m).
-    const vergeTex = fieldTex.clone();
-    vergeTex.repeat.set(0.5, 0.5);
-    this.vergeMaterial = new THREE.MeshLambertMaterial({ map: vergeTex, color: 0x9fb98a });
-    // Either side of the course only, so no pixel of the field is drawn under it.
-    const FIELD = 200;
-    const fieldGeo = new THREE.PlaneGeometry(FIELD - SHOULDER, 400).rotateX(-Math.PI / 2);
-    const fuv = fieldGeo.attributes.uv;
-    const fpos = fieldGeo.attributes.position;
-    this.field = new THREE.Group();
-    for (const side of [-1, 1]) {
-      // Texture by world position, one repeat every 2 m, so both halves line up with the course.
-      const geo = fieldGeo.clone();
-      const x0 = side * (SHOULDER + (FIELD - SHOULDER) / 2);
-      for (let i = 0; i < fuv.count; i++) geo.attributes.uv.setXY(i, (fpos.getX(i) + x0) / 2, -fpos.getZ(i) / 2);
-      const half = new THREE.Mesh(geo, this.fieldMaterial);
-      half.position.set(x0, -0.004, 0);
-      half.receiveShadow = true;
-      this.field.add(half);
-    }
-    scene.add(this.field);
-
-    // Logs: bark along them, end grain on their ends. Boulders: weathered stone, faceted.
-    const bark = makeCanvas(256, 256);
-    const bg = bark.getContext("2d");
-    const brand = rng(31);
-    bg.fillStyle = "#5e4128";
-    bg.fillRect(0, 0, 256, 256);
-    for (let i = 0; i < 260; i++) {
-      const x = brand() * 256;
-      bg.strokeStyle = brand() < 0.5 ? "rgba(30,18,8,0.55)" : "rgba(140,110,80,0.35)";
-      bg.lineWidth = 1 + brand() * 3;
-      bg.beginPath();
-      bg.moveTo(x, 0);
-      bg.bezierCurveTo(x + (brand() - 0.5) * 20, 85, x + (brand() - 0.5) * 20, 170, x + (brand() - 0.5) * 10, 256);
-      bg.stroke();
-    }
-    const barkTex = new THREE.CanvasTexture(bark);
-    barkTex.wrapS = barkTex.wrapT = THREE.RepeatWrapping;
-    barkTex.repeat.set(2, 3);
-    barkTex.colorSpace = THREE.SRGBColorSpace;
-    barkTex.anisotropy = this.maxAniso;
-    const ends = makeCanvas(128, 128);
-    const eg = ends.getContext("2d");
-    eg.fillStyle = "#c9a675";
-    eg.fillRect(0, 0, 128, 128);
-    for (let r = 4; r < 64; r += 5) {
-      eg.strokeStyle = r > 56 ? "#4a311d" : "rgba(120,85,45,0.6)";
-      eg.lineWidth = r > 56 ? 8 : 1.5;
-      eg.beginPath();
-      eg.arc(64, 64, r, 0, Math.PI * 2);
-      eg.stroke();
-    }
-    const endTex = new THREE.CanvasTexture(ends);
-    endTex.colorSpace = THREE.SRGBColorSpace;
-    this.logMaterials = [
-      new THREE.MeshStandardMaterial({ map: barkTex, bumpMap: barkTex, bumpScale: 2, roughness: 0.95 }),
-      new THREE.MeshStandardMaterial({ map: endTex, roughness: 0.8 }),
-      new THREE.MeshStandardMaterial({ map: endTex, roughness: 0.8 }),
-    ];
-    const stoneTex = new THREE.CanvasTexture(groundCanvas("rock", 1977));
-    stoneTex.wrapS = stoneTex.wrapT = THREE.RepeatWrapping;
-    stoneTex.colorSpace = THREE.SRGBColorSpace;
-    this.rockMaterial = new THREE.MeshStandardMaterial({ map: stoneTex, roughness: 0.88, flatShading: true });
-
-    // A sign at the start of each obstacle naming it.
-    this.signTextures = COURSE.sections.map(() => null);
-    this.signs = [];
-    const postMat = new THREE.MeshStandardMaterial({ color: 0x7a5a3a, roughness: 0.9 });
-    for (let i = 0; i < 6; i++) {
-      const group = new THREE.Group();
-      const post = new THREE.Mesh(new THREE.CylinderGeometry(0.03, 0.035, 1.1, 10).translate(0, 0.55, 0), postMat);
-      post.castShadow = true;
-      const board = new THREE.Mesh(new THREE.PlaneGeometry(1.1, 0.5), new THREE.MeshStandardMaterial({ roughness: 0.7 }));
-      board.position.set(0, 1.25, 0.04);
-      const back = new THREE.Mesh(new THREE.BoxGeometry(1.14, 0.54, 0.04), postMat);
-      back.position.set(0, 1.25, 0);
-      group.add(post, back, board);
-      group.position.x = TRACK_HALF + 1.4;
-      scene.add(group);
-      this.signs.push({ group, board, section: null });
-    }
-
-    // Trees out in the field, in two blocks that leapfrog each other as the tire moves.
-    this.treeBlocks = [];
-    const TREE_BLOCK = 120;
-    const trunkGeo = new THREE.CylinderGeometry(0.12, 0.18, 1.6, 7).translate(0, 0.8, 0);
-    const crownGeo = new THREE.ConeGeometry(1.3, 3.6, 8).translate(0, 3.2, 0);
-    const trunkMat = new THREE.MeshStandardMaterial({ color: 0x6b4a2f, roughness: 1 });
-    const crownMat = new THREE.MeshStandardMaterial({ color: 0x3f6f37, roughness: 1, flatShading: true });
-    for (let b = 0; b < 2; b++) {
-      const trand = rng(21);
-      const count = 90;
-      const trunks = new THREE.InstancedMesh(trunkGeo, trunkMat, count);
-      const crowns = new THREE.InstancedMesh(crownGeo, crownMat, count);
-      const tm = new THREE.Matrix4();
-      for (let i = 0; i < count; i++) {
-        const side = i % 2 ? 1 : -1;
-        const x = side * (SHOULDER + 1 + trand() * 40);
-        const z = -trand() * TREE_BLOCK;
-        const s = 0.7 + trand() * 0.8;
-        tm.compose(new THREE.Vector3(x, 0, z), new THREE.Quaternion().setFromEuler(new THREE.Euler(0, trand() * 6, 0)), new THREE.Vector3(s, s * (0.8 + trand() * 0.5), s));
-        trunks.setMatrixAt(i, tm);
-        crowns.setMatrixAt(i, tm);
-      }
-      const group = new THREE.Group();
-      group.add(trunks, crowns);
-      scene.add(group);
-      this.treeBlocks.push(group);
-    }
-    this.treeBlock = TREE_BLOCK;
+    // The mountain, its road, trees and boulders.
+    this.landscape = new Landscape(scene, { maxAniso: this.maxAniso });
 
     // The car. The body and frame are placed by the sprung mass's centre, their parts in the car's
     // own axes from the middle between the axles at hub height; each axle, with its wheels and
@@ -938,6 +616,21 @@ export class World {
       this.axleGroups[w.front ? 0 : 1].add(wheel);
       return { wheel, tire: wheel.getObjectByName("tire"), blur };
     });
+    // Everything that never moves against the body, the frame or an axle, joined by material: far
+    // fewer things to draw. What turns or stretches stays apart.
+    // In the cab, under the roof, the steering wheel's chrome sees little of the sky it would
+    // otherwise mirror (the reflections are the open sky's): worn to a satin steel.
+    body.steeringWheel.traverse((o) => {
+      if (o.isMesh && o.material.metalness > 0.5) {
+        o.material = o.material.clone();
+        o.material.color.set(0x3c3e40);
+        o.material.metalness = 0.25;
+        o.material.roughness = 0.55;
+      }
+    });
+    mergeStatic(body.group, new Set([body.steeringWheel]));
+    mergeStatic(this.frame, new Set([this.fan, body.group]));
+    this.axleGroups.forEach((group, i) => mergeStatic(group, new Set([...(i ? [] : [...this.knuckles, this.tieRod]), ...this.wheels.map((w) => w.wheel)])));
 
     this.marks = new Marks(scene);
     this.particles = new Particles(scene);
@@ -967,9 +660,12 @@ export class World {
     this.fov = 52;
     this.lastOrbit = -Infinity;
     this.chasePosition = null;
-    this.world = null;
+    this.time = null;
+    this.high = false;
     this.labelPoints = {};
     this.pixelRatio = maxPixelRatio();
+    // Everything lit outdoors: its sunlight shaded by the mountain and the clouds.
+    outdoors(scene);
     this.resize();
   }
 
@@ -978,179 +674,56 @@ export class World {
     this.resize();
   }
 
-  groundMaterial(index) {
-    if (!this.groundMaterials[index]) {
-      const id = SURFACES[index].id;
-      const look = LOOKS[id];
-      const tex = new THREE.CanvasTexture(groundCanvas(id, 1000 + index * 77));
-      tex.wrapS = tex.wrapT = THREE.RepeatWrapping;
-      tex.colorSpace = THREE.SRGBColorSpace;
-      tex.anisotropy = this.maxAniso;
-      this.groundMaterials[index] = new THREE.MeshStandardMaterial({
-        map: tex,
-        bumpMap: look.bump ? tex : null,
-        bumpScale: look.bump,
-        roughness: look.rough,
-        metalness: 0,
-        envMapIntensity: id === "ice" || id === "wet" ? 1.4 : 1,
-      });
-    }
-    return this.groundMaterials[index];
-  }
-
-  signTexture(index) {
-    if (!this.signTextures[index]) {
-      const s = COURSE.sections[index];
-      const c = makeCanvas(512, 232);
-      const g = c.getContext("2d");
-      g.fillStyle = "#f4efe4";
-      g.fillRect(0, 0, 512, 232);
-      g.fillStyle = surfaceColor(s.look);
-      g.fillRect(0, 0, 512, 26);
-      g.fillStyle = "#2a2622";
-      g.textAlign = "center";
-      g.font = `800 62px system-ui, -apple-system, "Segoe UI", Roboto, sans-serif`;
-      g.fillText(s.name, 256, 112, 480);
-      g.fillStyle = "#6a6158";
-      g.font = `600 34px system-ui, -apple-system, "Segoe UI", Roboto, sans-serif`;
-      g.fillText(s.note, 256, 178, 480);
-      const tex = new THREE.CanvasTexture(c);
-      tex.colorSpace = THREE.SRGBColorSpace;
-      tex.anisotropy = this.maxAniso;
-      this.signTextures[index] = tex;
-    }
-    return this.signTextures[index];
-  }
-
-  // One 8 m piece of the course, k pieces from its start: the ground shaped as the physics has it
-  // (but for the logs and boulders, drawn on it), each cell in what it's made of.
-  chunk(k) {
-    if (this.chunks.has(k)) return this.chunks.get(k);
-    const group = new THREE.Group();
-    const a0 = k * CHUNK;
-    const sections = COURSE.sections.filter((s) => s.start < a0 + CHUNK && s.start + s.length > a0);
-    // Finer where there are sharp edges: steps, logs, boulders.
-    const step = sections.some((s) => s.fine) ? 0.04 : 0.1;
-    const rows = Math.round(CHUNK / step);
-    const xs = [];
-    const lane = TRACK_HALF + 0.5;
-    const outer = Math.ceil((SHOULDER - lane) / 0.4);
-    for (let i = 0; i < outer; i++) xs.push(-SHOULDER + ((SHOULDER - lane) * i) / outer);
-    const inner = Math.round((2 * lane) / 0.1);
-    for (let i = 0; i <= inner; i++) xs.push(-lane + (2 * lane * i) / inner);
-    for (let i = outer - 1; i >= 0; i--) xs.push(SHOULDER - ((SHOULDER - lane) * i) / outer);
-    const cols = xs.length;
-    const shape = (x, a) => {
-      const { section, u } = COURSE.locate(a);
-      return (section.drawn || section.height)(x, u);
-    };
-    // Heights, a row either side spare for the normals.
-    const heights = [];
-    for (let r = -1; r <= rows + 1; r++) heights.push(xs.map((x) => shape(x, a0 + r * step)));
-    const position = new Float32Array(cols * (rows + 1) * 3);
-    const normal = new Float32Array(cols * (rows + 1) * 3);
-    const uv = new Float32Array(cols * (rows + 1) * 2);
-    for (let r = 0; r <= rows; r++) {
-      const h = heights[r + 1];
-      for (let c = 0; c < cols; c++) {
-        const i = r * cols + c;
-        const l = Math.max(0, c - 1);
-        const rt = Math.min(cols - 1, c + 1);
-        const dx = (h[rt] - h[l]) / (xs[rt] - xs[l]);
-        const da = (heights[r + 2][c] - heights[r][c]) / (2 * step); // up per metre along
-        const n = new THREE.Vector3(-dx, 1, da).normalize();
-        position.set([xs[c], h[c], -r * step], i * 3);
-        normal.set([n.x, n.y, n.z], i * 3);
-        uv.set([xs[c], a0 + r * step], i * 2);
-      }
-    }
-    // Each cell's two triangles, sorted by what the ground is made of there.
-    const kinds = [];
-    const lists = [];
-    for (let r = 0; r < rows; r++) {
-      for (let c = 0; c < cols - 1; c++) {
-        let id = COURSE.surface((xs[c] + xs[c + 1]) / 2, -(a0 + (r + 0.5) * step)).id;
-        if (id === "wood" || id === "rock") id = "dirt"; // under a log or a boulder
-        let m = kinds.indexOf(id);
-        if (m < 0) {
-          m = kinds.push(id) - 1;
-          lists.push([]);
-        }
-        const i = r * cols + c;
-        lists[m].push(i, i + 1, i + cols, i + 1, i + cols + 1, i + cols);
-      }
-    }
-    const geo = new THREE.BufferGeometry();
-    geo.setAttribute("position", new THREE.BufferAttribute(position, 3));
-    geo.setAttribute("normal", new THREE.BufferAttribute(normal, 3));
-    geo.setAttribute("uv", new THREE.BufferAttribute(uv, 2));
-    const index = [];
-    lists.forEach((list, m) => {
-      geo.addGroup(index.length, list.length, m);
-      for (const v of list) index.push(v);
-    });
-    geo.setIndex(index);
-    const materials = kinds.map((id) => (id === "grass" ? this.vergeMaterial : this.groundMaterial(SURFACES.findIndex((s) => s.id === id))));
-    const ground = new THREE.Mesh(geo, materials);
-    ground.receiveShadow = true;
-    group.add(ground);
-
-    // The logs and boulders whose middles are on this piece.
-    for (const s of sections) {
-      for (const log of s.logs || []) {
-        const at = s.start + log.u;
-        if (at < a0 || at >= a0 + CHUNK) continue;
-        const mesh = new THREE.Mesh(new THREE.CylinderGeometry(log.r, log.r, 5.4, 22).rotateZ(Math.PI / 2), this.logMaterials);
-        mesh.position.set(0, 0.8 * log.r, -(at - a0));
-        mesh.rotation.y = log.angle;
-        mesh.castShadow = mesh.receiveShadow = true;
-        group.add(mesh);
-      }
-      for (const rock of s.rocks || []) {
-        const at = s.start + rock.u;
-        if (at < a0 || at >= a0 + CHUNK) continue;
-        const mesh = new THREE.Mesh(new THREE.SphereGeometry(1, 9, 5, 0, Math.PI * 2, 0, Math.PI / 2), this.rockMaterial);
-        mesh.scale.set(rock.rx, rock.h, rock.ru);
-        mesh.position.set(rock.x, 0, -(at - a0));
-        mesh.castShadow = mesh.receiveShadow = true;
-        group.add(mesh);
-      }
-    }
-    group.visible = false;
-    this.scene.add(group);
-    this.chunks.set(k, group);
-    return group;
-  }
-
-  setWorld(name) {
-    if (this.world === name) return;
-    this.world = name;
-    const w = WORLD_LOOKS[name] || WORLD_LOOKS.earth;
-    this.skyUniforms.top.value.set(w.top);
-    this.skyUniforms.horizon.value.set(w.horizon);
-    this.skyUniforms.ground.value.set(w.ground);
-    this.scene.fog = w.fog ? new THREE.Fog(w.horizon, w.fog[0], w.fog[1]) : null;
-    this.stars.visible = name === "moon";
-    this.sun.intensity = w.sun;
-    this.hemi.intensity = w.hemi;
-    this.hemi.color.set(w.horizon);
-    this.hemi.groundColor.set(0x8a8478); // light bounced off the ground, kept neutral so metal isn't tinted
-    this.fieldMaterial.color.set(name === "earth" ? 0x9fb98a : w.ground);
-    this.vergeMaterial.color.copy(this.fieldMaterial.color);
-    for (const g of this.treeBlocks) g.visible = name === "earth";
-    // Reflections come from this sky.
+  // The time of day: where the sun is and its colour, the sky's, the haze; the ground's shadows
+  // and the far pines' pictures in that light; and the reflections, from that sky.
+  setTime(name) {
+    const t = TIMES[name] || TIMES.afternoon;
+    if (this.time === t) return;
+    this.time = t;
+    applyTime(t);
+    this.sunOffset.copy(AIR.sunTo.value).multiplyScalar(45);
+    this.sun.color.set(t.sun);
+    this.sun.intensity = t.intensity;
+    this.hemi.color.set(t.hemiSky);
+    this.hemi.groundColor.set(t.hemiGround); // light bounced off the ground
+    this.hemi.intensity = t.hemi;
+    // The haze (atmosphere.js): fogNear is its density, fogFar how fast it thins with height.
+    this.scene.fog = new THREE.Fog(t.haze, t.density, t.thin);
+    this.background.setTime(t, this.hemi);
+    this.landscape.lightUp();
     const pmrem = new THREE.PMREMGenerator(this.renderer);
     const envScene = new THREE.Scene();
-    envScene.add(this.sky.clone());
-    const floor = new THREE.Mesh(new THREE.PlaneGeometry(600, 600).rotateX(-Math.PI / 2), new THREE.MeshBasicMaterial({ color: 0x77736b }));
+    envScene.add(this.background.sky.clone());
+    const floor = new THREE.Mesh(new THREE.PlaneGeometry(60000, 60000).rotateX(-Math.PI / 2), new THREE.MeshBasicMaterial({ color: 0x4f4c40 }));
     floor.position.y = -2;
     envScene.add(floor);
-    const sunDisc = new THREE.Mesh(new THREE.SphereGeometry(18, 16, 8), new THREE.MeshBasicMaterial({ color: 0xffffff }));
-    sunDisc.position.set(-120, 160, 60);
+    const sunDisc = new THREE.Mesh(new THREE.SphereGeometry(18, 16, 8), new THREE.MeshBasicMaterial({ color: AIR.sunColour.value.clone().multiplyScalar(0.4) }));
+    sunDisc.position.copy(AIR.sunTo.value).multiplyScalar(270);
     envScene.add(sunDisc);
     if (this.scene.environment) this.scene.environment.dispose();
-    this.scene.environment = pmrem.fromScene(envScene, 0.02).texture;
+    this.scene.environment = pmrem.fromScene(envScene, 0.02, 0.1, 30000).texture;
+    // The sky's light comes partly from here, partly from the hemisphere light; together, as much as
+    // the sky gives.
+    this.scene.environmentIntensity = 0.55;
     pmrem.dispose();
+    this.landscape.bakeTrees(this.renderer, { hemi: this.hemi, sun: this.sun, environment: this.scene.environment });
+    // What lights the dust and bits thrown up: the sky and some of the sun.
+    this.particles.material.uniforms.light.value.copy(this.hemi.color).multiplyScalar(t.hemi * 1.1).add(AIR.sunColour.value.clone().multiplyScalar(0.2));
+  }
+
+  // "high": drawn through the post-processing (post.js); "standard": straight to the screen;
+  // "auto": high, except on phones and tablets, until frames come too slowly (see main.js).
+  setQuality(quality) {
+    this.auto = quality === "auto";
+    this.high = quality === "high" || (this.auto && !isTouch);
+    if (this.high && !this.post) {
+      this.post = new Post(this.renderer, this.scene, this.camera, (renderer) => this.drawWorld(renderer));
+      this.post.setSize(this.W, this.H, this.renderer.getPixelRatio());
+    }
+  }
+
+  drawWorld(renderer) {
+    renderer.render(this.scene, this.camera);
   }
 
   resize() {
@@ -1164,6 +737,7 @@ export class World {
     this.camera.updateProjectionMatrix();
     this.W = w;
     this.H = h;
+    if (this.post) this.post.setSize(w, h, this.pixelRatio);
     this.updatePointScale();
   }
 
@@ -1345,7 +919,7 @@ export class World {
 
   // Everything for one frame. dt is sim time; realDt drives the camera.
   draw(sim, dt, opts) {
-    this.setWorld(opts.world);
+    if (!this.time) this.setTime("afternoon");
     const [px, py, pz] = sim.p;
     const rdt = opts.realDt || dt;
 
@@ -1399,17 +973,21 @@ export class World {
       s.spinner.rotation.z = sim.shaftAngle;
     }
 
-    this.updateTrack(sim.along);
     this.updateEffects(sim, dt);
     this.updateForces(sim, opts.forces);
     this.updateCamera(sim, rdt);
+    this.landscape.update(this.camera.position, rdt);
+    drift(rdt);
 
-    this.sun.position.set(px - 2.2, py + 5, pz - 1.5);
+    this.sun.position.set(px + this.sunOffset.x, py + this.sunOffset.y, pz + this.sunOffset.z);
     this.sun.target.position.set(px, py - 0.7, pz);
-    this.sky.position.copy(this.camera.position);
-    this.stars.position.copy(this.camera.position);
+    this.background.update(this.camera);
 
-    this.renderer.render(this.scene, this.camera);
+    if (this.high) this.post.render();
+    else {
+      this.renderer.setRenderTarget(null);
+      this.drawWorld(this.renderer);
+    }
   }
 
   // The cameras. Chase, like a racing game's: behind and a little above, trailing the car round
@@ -1461,7 +1039,7 @@ export class World {
         this.chasePosition.lerp(want, 1 - Math.exp(-rdt * 9));
       } else this.chasePosition = want.clone();
       const camera = chase ? this.chasePosition : want;
-      camera.y = Math.max(camera.y, COURSE.height(camera.x, camera.z) + 0.5);
+      camera.y = Math.max(camera.y, MOUNTAIN.height(camera.x, camera.z) + 0.6);
       this.camera.position.copy(camera);
       this.camera.lookAt(target);
       fov = chase ? 52 + Math.min(16, speed * 0.6) : 45;
@@ -1472,47 +1050,6 @@ export class World {
       this.camera.updateProjectionMatrix();
       this.updatePointScale();
     }
-  }
-
-  updateTrack(x) {
-    // The pieces of ground around the car, each where it comes round this time.
-    const pieces = COURSE.length / CHUNK;
-    const shown = new Set();
-    for (let j = Math.floor((x - BEHIND) / CHUNK); j <= Math.floor((x + AHEAD) / CHUNK); j++) {
-      const group = this.chunk(((j % pieces) + pieces) % pieces);
-      group.position.z = -j * CHUNK;
-      group.visible = true;
-      shown.add(group);
-    }
-    for (const group of this.shown) if (!shown.has(group)) group.visible = false;
-    this.shown = shown;
-    // The field keeps its texture pinned to the ground as it follows along.
-    this.field.position.z = -Math.round(x / 2) * 2;
-    const block = this.treeBlock;
-    const n = Math.floor(x / block);
-    this.treeBlocks[0].position.z = -n * block;
-    this.treeBlocks[1].position.z = -(n + 1) * block;
-
-    // Signs at the start of the obstacles around the car.
-    const L = COURSE.length;
-    const starts = [];
-    for (let lap = Math.floor((x - BEHIND) / L); lap <= Math.floor((x + AHEAD) / L); lap++) {
-      COURSE.sections.forEach((s, i) => {
-        const at = lap * L + s.start;
-        if (at > x - BEHIND && at < x + AHEAD) starts.push({ at, i });
-      });
-    }
-    this.signs.forEach((sign, j) => {
-      const here = starts[j];
-      sign.group.visible = !!here;
-      if (!here) return;
-      if (sign.section !== here.i) {
-        sign.section = here.i;
-        sign.board.material.map = this.signTexture(here.i);
-        sign.board.material.needsUpdate = true;
-      }
-      sign.group.position.z = -here.at;
-    });
   }
 
   updateEffects(sim, dt) {
@@ -1546,6 +1083,18 @@ export class World {
       }
       this.lastPoints[i] = [x, z];
       if (!onGround || dt <= 0) return;
+
+      // Dust off a dry road, raised by the rear tires rolling over it, more the faster they go.
+      if (i >= 2 && (id === "dirt" || id === "loose") && airiness > 0 && travel > 1.2) {
+        P.spawn("trail", (travel - 1.2) * 4.5, dt, (rand) => ({
+          x: x - sim.v[0] * 0.04 + (rand() - 0.5) * 0.3,
+          y: groundY + 0.2 + rand() * 0.15,
+          z: z - sim.v[2] * 0.04 + (rand() - 0.5) * 0.3,
+          vx: sim.v[0] * 0.3 + (rand() - 0.5) * 0.9,
+          vy: 0.15 + rand() * 0.35,
+          vz: sim.v[2] * 0.3 + (rand() - 0.5) * 0.9,
+        }));
+      }
 
       // Loose stuff flies off the way the bottom of the tread is moving over the ground.
       const t = c.tread;
@@ -1584,8 +1133,8 @@ export class World {
         }
       }
     });
-    this.marks.write(sim.time, COURSE);
-    P.update(dt, sim.g, airiness, COURSE);
+    this.marks.write(sim.time, MOUNTAIN);
+    P.update(dt, sim.g, airiness, MOUNTAIN);
   }
 
   // Arrows for the forces, to one scale: the weight on one tire is 0.8 of a tire's radius long.
