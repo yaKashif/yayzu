@@ -6,7 +6,6 @@
     <image:image><image:loc>https://yayzu.com/games/boulder-bear/thumbnail.jpg</image:loc></image:image>
     <image:image><image:loc>https://yayzu.com/games/fruit-slash/thumbnail.jpg</image:loc></image:image>
     <image:image><image:loc>https://yayzu.com/games/wiz-o-wisp/thumbnail.jpg</image:loc></image:image>
-    <image:image><image:loc>https://yayzu.com/games/naseeb/thumbnail.jpg</image:loc></image:image>
   </url>
   <url>
     <loc>https://yayzu.com/boulder-bear/</loc>
@@ -22,10 +21,5 @@
     <loc>https://yayzu.com/wiz-o-wisp/</loc>
     <lastmod>2026-10-09</lastmod>
     <image:image><image:loc>https://yayzu.com/games/wiz-o-wisp/thumbnail.jpg</image:loc></image:image>
-  </url>
-  <url>
-    <loc>https://yayzu.com/naseeb/</loc>
-    <lastmod>2026-10-09</lastmod>
-    <image:image><image:loc>https://yayzu.com/games/naseeb/thumbnail.jpg</image:loc></image:image>
   </url>
 </urlset>
